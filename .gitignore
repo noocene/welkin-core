@@ -1,0 +1,5 @@
+/target
+Cargo.lock
+src/main.rs
+.vscode
+*.dot
