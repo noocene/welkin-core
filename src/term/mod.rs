@@ -6,7 +6,7 @@ pub use parse::Definitions;
 pub use stratified::{StratificationError, Stratified};
 
 #[derive(Debug, Clone, Copy)]
-pub struct Symbol(usize);
+pub struct Symbol(pub(crate) usize);
 
 #[derive(Clone)]
 pub enum Term {

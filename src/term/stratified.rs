@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use super::{normalize::NormalizationError, Term};
 
-#[derive(Debug)]
-pub struct Stratified<'a>(Term, &'a HashMap<String, Term>);
+#[derive(Debug, Clone)]
+pub struct Stratified<'a>(pub(crate) Term, pub(crate) &'a HashMap<String, Term>);
 
 impl<'a> Stratified<'a> {
     pub fn normalize(&mut self) -> Result<(), NormalizationError> {

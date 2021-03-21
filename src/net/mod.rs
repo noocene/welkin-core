@@ -5,7 +5,7 @@ use std::{
 };
 
 mod storage;
-use storage::Storage;
+pub(crate) use storage::Storage;
 
 mod vis;
 
@@ -116,7 +116,7 @@ impl<T: Storage> Port<T> {
         Port(T::pack(node.0, slot))
     }
 
-    fn address(&self) -> Index {
+    pub(crate) fn address(&self) -> Index {
         Index(self.0.address())
     }
 
@@ -128,6 +128,12 @@ impl<T: Storage> Port<T> {
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct Index(usize);
+
+impl Index {
+    pub(crate) fn is_root(&self) -> bool {
+        self.0 == 0
+    }
+}
 
 #[derive(Debug)]
 pub struct Net<T: Storage> {
@@ -150,8 +156,9 @@ impl<T: Storage + Clone> Net<T> {
             freed: vec![],
             active: vec![],
         };
-        let root = net.add(AgentType::Root);
-        let p = root.principal();
+        let root = net.add(AgentType::Root).ports();
+        net.connect(root.principal, root.left);
+        let p = root.right;
         (net, p)
     }
 
@@ -205,7 +212,24 @@ impl<T: Storage + Clone> Net<T> {
         b_agent.update_slot(b.slot(), a);
     }
 
-    fn free(&mut self, address: Index) {
+    pub fn disconnect(&mut self, a: Port<T>)
+    where
+        T: Eq,
+    {
+        let b = self.follow(a.clone());
+        if self.follow(b.clone()) == a {
+            let aa = a.address();
+            let ba = b.address();
+
+            self.get_mut(aa).update_slot(a.slot(), a);
+            self.get_mut(ba).update_slot(b.slot(), b);
+        }
+    }
+
+    fn free(&mut self, address: Index)
+    where
+        T: Eq,
+    {
         self.freed.push(address);
     }
 
@@ -213,64 +237,69 @@ impl<T: Storage + Clone> Net<T> {
         self.get(x.address())
     }
 
-    pub fn reduce(&mut self) {
-        while let Some((a, b)) = self.active.pop() {
+    pub fn reduce(&mut self)
+    where
+        T: Debug + Eq,
+    {
+        if let Some((a, b)) = self.active.pop() {
             self.rewrite(a, b);
         }
     }
 
-    fn rewrite(&mut self, x: Index, y: Index) {
-        use AgentType::{Epsilon, Root};
-
-        let (x_ty, x_ports) = {
-            let x = self.get(x);
-            (x.ty(), x.ports())
-        };
-        let (y_ty, y_ports) = {
-            let y = self.get(y);
-            (y.ty(), y.ports())
-        };
-
-        if x_ty == Root || y_ty == Root {
-            return;
+    pub(crate) fn bind_unbound(&mut self)
+    where
+        T: Eq + Copy,
+    {
+        for i in 0..self.agents.len() {
+            let ports = self.agents[i].ports();
+            if self.follow(ports.left) == ports.left {
+                let era = self.add(AgentType::Epsilon).ports();
+                self.connect(ports.left, era.principal);
+            }
         }
+    }
+
+    fn rewrite(&mut self, x: Index, y: Index)
+    where
+        T: Debug + Eq,
+    {
+        use AgentType::Epsilon;
+
+        let x_ty = self.get(x).ty();
+        let y_ty = self.get(y).ty();
 
         if x_ty == y_ty {
             if x_ty != Epsilon {
-                self.connect(x_ports.right, y_ports.right);
-                self.connect(x_ports.left, y_ports.left);
+                let p0 = self.follow(Port::new(x, Slot::Left));
+                let p1 = self.follow(Port::new(y, Slot::Left));
+                self.connect(p0, p1);
+                let p0 = self.follow(Port::new(x, Slot::Right));
+                let p1 = self.follow(Port::new(y, Slot::Right));
+                self.connect(p0, p1);
             }
 
             self.free(x);
             self.free(y);
         } else {
-            if x_ty == Epsilon || y_ty == Epsilon {
-                let (e, ne, ports) = if x_ty == Epsilon {
-                    (x, y, y_ports)
-                } else {
-                    (y, x, x_ports)
-                };
-                let era = self.add(Epsilon).ports();
-                self.connect(era.left, era.right);
-                self.connect(era.principal, ports.left);
-                self.connect(Port::new(e, Slot::Principal), ports.right);
-                self.free(ne);
-                return;
-            }
+            use Slot::*;
 
-            let dup_x = self.add(x_ty).ports();
-            let dup_y = self.add(y_ty).ports();
+            let p = self.add(y_ty).ports().principal.address();
+            let q = self.add(y_ty).ports().principal.address();
+            let r = self.add(x_ty).ports().principal.address();
+            let s = self.add(x_ty).ports().principal.address();
 
-            self.connect(dup_x.principal, y_ports.left);
-            self.connect(x_ports.principal, y_ports.right);
-            self.connect(dup_y.principal, x_ports.left);
-            self.connect(y_ports.principal, x_ports.right);
+            self.connect(Port::new(r, Left), Port::new(p, Left));
+            self.connect(Port::new(s, Left), Port::new(p, Right));
+            self.connect(Port::new(r, Right), Port::new(q, Left));
+            self.connect(Port::new(s, Right), Port::new(q, Right));
 
-            self.connect(dup_x.left, dup_y.right);
-            self.connect(dup_x.right, Port::new(y, Slot::Right));
+            self.connect(Port::new(p, Principal), self.follow(Port::new(x, Left)));
+            self.connect(Port::new(q, Principal), self.follow(Port::new(x, Right)));
+            self.connect(Port::new(r, Principal), self.follow(Port::new(y, Left)));
+            self.connect(Port::new(s, Principal), self.follow(Port::new(y, Right)));
 
-            self.connect(Port::new(x, Slot::Left), dup_y.left);
-            self.connect(Port::new(x, Slot::Right), Port::new(y, Slot::Left));
+            self.free(x);
+            self.free(y);
         }
     }
 }

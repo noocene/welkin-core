@@ -15,17 +15,22 @@ not = \b \t \f
     : S = s
     . \z (S z)
 
-add = \a \b \s
+2 = \s
     : S = s
-    : A = (a .S)
-    : B = (b .S)
-    . \z (A (B z))
+    . \z (S (S z))
 
-mul = \a \b \s
-    : S = s
-    (a (b .S))
+id = \x x
 
-2 = (add 1 1)
-3 = (add 2 1)
+test = \x
+    : X = x
+    . (X X)
 
-main = (mul 3 2)
+boxedId = (test .id)
+boxedIdTrivial = .id
+
+appfalse = \x
+    : X = x
+    .(X false)
+
+
+main = boxedId
