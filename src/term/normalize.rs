@@ -2,6 +2,12 @@ use std::collections::HashMap;
 
 use super::Term;
 
+#[derive(Debug)]
+pub enum NormalizationError {
+    InvalidDuplication,
+    InvalidApplication,
+}
+
 impl Term {
     fn shift(&mut self, increment: usize, depth: usize) {
         use Term::*;
@@ -65,35 +71,38 @@ impl Term {
         }
     }
 
-    pub fn normalize(&mut self, definitions: &HashMap<String, Term>) {
+    pub fn normalize(
+        &mut self,
+        definitions: &HashMap<String, Term>,
+    ) -> Result<(), NormalizationError> {
         use Term::*;
 
         match self {
             Reference(binding) => {
                 if let Some(term) = definitions.get(binding).map(|term| {
                     let mut term = term.clone();
-                    term.normalize(definitions);
-                    term
+                    term.normalize(definitions)?;
+                    Ok(term)
                 }) {
-                    *self = term;
+                    *self = term?;
                 }
             }
             Lambda { body, .. } => {
-                body.normalize(definitions);
+                body.normalize(definitions)?;
             }
             Put(term) => {
-                term.normalize(definitions);
+                term.normalize(definitions)?;
             }
             Duplicate {
                 body,
                 expression,
                 binding,
             } => {
-                expression.normalize(definitions);
+                expression.normalize(definitions)?;
                 match &**expression {
                     Put(expression) => {
                         body.substitute(&expression, 0);
-                        body.normalize(definitions);
+                        body.normalize(definitions)?;
                         *self = *body.clone();
                     }
                     Duplicate {
@@ -113,20 +122,20 @@ impl Term {
                             expression: expression.clone(),
                             body: Box::new(dup),
                         };
-                        term.normalize(definitions);
+                        term.normalize(definitions)?;
                         *self = term;
                     }
-                    Lambda { .. } => panic!("bad dup"),
+                    Lambda { .. } => Err(NormalizationError::InvalidDuplication)?,
                     _ => {
-                        body.normalize(definitions);
+                        body.normalize(definitions)?;
                     }
                 }
             }
             Apply { function, argument } => {
-                function.normalize(definitions);
+                function.normalize(definitions)?;
                 let function = function.clone();
                 match *function {
-                    Put(_) => panic!("bad apply"),
+                    Put(_) => Err(NormalizationError::InvalidApplication)?,
                     Duplicate {
                         body,
                         expression,
@@ -143,20 +152,22 @@ impl Term {
                             expression,
                             body,
                         };
-                        term.normalize(definitions);
+                        term.normalize(definitions)?;
                         *self = term;
                     }
                     Lambda { mut body, .. } => {
                         body.substitute(argument, 0);
-                        body.normalize(definitions);
+                        body.normalize(definitions)?;
                         *self = *body;
                     }
                     _ => {
-                        argument.normalize(definitions);
+                        argument.normalize(definitions)?;
                     }
                 }
             }
             Symbol(_) => {}
         }
+
+        Ok(())
     }
 }
