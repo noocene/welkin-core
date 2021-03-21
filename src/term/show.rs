@@ -26,9 +26,9 @@ impl Term {
                 binding,
                 expression,
                 body,
-            } => write!(f, "\n  : {} = ", binding)
+            } => write!(f, ": {} = ", binding)
                 .and_then(|_| expression.write(f, ctx))
-                .and_then(|_| write!(f, "\n  "))
+                .and_then(|_| write!(f, " "))
                 .and_then(|_| body.write(f, &mut ctx.with(binding.clone()))),
         }
     }

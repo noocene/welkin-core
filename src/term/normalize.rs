@@ -71,7 +71,7 @@ impl Term {
         }
     }
 
-    pub fn normalize(
+    pub(crate) fn normalize(
         &mut self,
         definitions: &HashMap<String, Term>,
     ) -> Result<(), NormalizationError> {

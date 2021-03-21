@@ -1,7 +1,9 @@
 mod normalize;
 mod parse;
 mod show;
+mod stratified;
 pub use parse::Definitions;
+pub use stratified::{StratificationError, Stratified};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Symbol(usize);
