@@ -1,12 +1,12 @@
+mod normalize;
 mod parse;
 mod show;
 pub use parse::Definitions;
-pub use show::Contextualized;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Symbol(usize);
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Term {
     Symbol(Symbol),
     Lambda {
@@ -17,9 +17,9 @@ pub enum Term {
         function: Box<Term>,
         argument: Box<Term>,
     },
-    Box(Box<Term>),
+    Put(Box<Term>),
     Duplicate {
-        name: String,
+        binding: String,
         expression: Box<Term>,
         body: Box<Term>,
     },

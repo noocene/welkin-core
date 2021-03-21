@@ -1,46 +1,42 @@
-use std::fmt::{self, Display};
+use std::fmt::{self, Debug};
 
 use super::{parse::Context, Term};
 
-pub struct Contextualized(pub Term, pub Context);
-
-impl Display for Contextualized {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Term {
+    fn write(&self, f: &mut fmt::Formatter<'_>, ctx: &mut Context) -> fmt::Result {
         use Term::*;
 
-        match &self.0 {
-            Symbol(symbol) => write!(f, "{}", self.1.lookup(*symbol).ok_or(fmt::Error)?),
-            Lambda { binding, body } => {
-                write!(
-                    f,
-                    "\\{} {}",
-                    binding,
-                    Contextualized(*body.clone(), self.1.clone())
-                )
-            }
-            Apply { function, argument } => {
-                write!(
-                    f,
-                    "({} {})",
-                    Contextualized(*function.clone(), self.1.clone()),
-                    Contextualized(*argument.clone(), self.1.clone())
-                )
-            }
-            Box(term) => write!(f, ".{}", Contextualized(*term.clone(), self.1.clone())),
+        match &self {
+            Symbol(symbol) => write!(
+                f,
+                "{}",
+                ctx.lookup(*symbol)
+                    .unwrap_or_else(|| { format!("^{}", symbol.0) })
+            ),
+            Lambda { binding, body } => write!(f, "\\{} ", binding)
+                .and_then(|_| body.write(f, &mut ctx.with(binding.clone()))),
+            Apply { function, argument } => write!(f, "(")
+                .and_then(|_| function.write(f, ctx))
+                .and_then(|_| write!(f, " "))
+                .and_then(|_| argument.write(f, ctx))
+                .and_then(|_| write!(f, ")")),
+            Put(term) => write!(f, ". ").and_then(|_| term.write(f, ctx)),
             Reference(name) => write!(f, "{}", name),
             Duplicate {
-                name,
+                binding,
                 expression,
                 body,
-            } => {
-                write!(
-                    f,
-                    ": {} = {} {}",
-                    name,
-                    Contextualized(*expression.clone(), self.1.clone()),
-                    Contextualized(*body.clone(), self.1.clone())
-                )
-            }
+            } => write!(f, "\n  : {} = ", binding)
+                .and_then(|_| expression.write(f, ctx))
+                .and_then(|_| write!(f, "\n  "))
+                .and_then(|_| body.write(f, &mut ctx.with(binding.clone()))),
         }
+    }
+}
+
+impl Debug for Term {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut context = Default::default();
+        self.write(f, &mut context)
     }
 }

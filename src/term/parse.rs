@@ -6,7 +6,7 @@ use combine::{
     token as bare_token, value, EasyParser, Parser, Stream,
 };
 
-use super::{Contextualized, Symbol, Term};
+use super::{Symbol, Term};
 
 fn name<Input>() -> impl Parser<Input, Output = String>
 where
@@ -63,7 +63,7 @@ parser! {
     fn _box[Input](ctx: Context)(Input) -> Term
         where [Input: Stream<Token = char>]
     {
-        term(ctx.clone()).map(Box::new).map(Term::Box)
+        term(ctx.clone()).map(Box::new).map(Term::Put)
     }
 }
 
@@ -71,15 +71,16 @@ parser! {
     fn duplicate[Input](ctx: Context)(Input) -> Term
         where [Input: Stream<Token = char>]
     {
-        name().skip(token('=')).then(move |name| {
-            let ctx = ctx.with(name.clone());
+        name().skip(token('=')).then(move |binding| {
             (
-                value(name),
+                value(binding),
                 term(ctx.clone()).map(Box::new),
-                term(ctx).map(Box::new),
+                value(ctx.clone())
             )
-        }).map(|(name, expression, body)| Term::Duplicate {
-            name,
+        }).then(|(binding, b, mut ctx): (String, _, _)| {
+            (value(binding.clone()), value(b), term(ctx.with(binding)).map(Box::new))
+        }).map(|(binding, expression, body)| Term::Duplicate {
+            binding,
             expression,
             body,
         })
@@ -95,17 +96,16 @@ pub struct Context(Rc<RefCell<Vec<String>>>);
 #[derive(Clone, Default)]
 pub struct Definitions {
     pub terms: Vec<(String, Term)>,
-    pub context: Context,
 }
 
 impl Context {
-    fn with(&mut self, name: String) -> Self {
+    pub(crate) fn with(&mut self, name: String) -> Self {
         self.0.borrow_mut().push(name);
         self.clone()
     }
 
     fn resolve(&self, name: &str) -> Option<Symbol> {
-        for (idx, binding) in self.0.borrow().iter().enumerate().rev() {
+        for (idx, binding) in self.0.borrow().iter().rev().enumerate() {
             if name == binding {
                 return Some(Symbol(idx));
             }
@@ -114,11 +114,7 @@ impl Context {
     }
 
     pub(crate) fn lookup(&self, symbol: Symbol) -> Option<String> {
-        self.0.borrow().get(symbol.0).cloned()
-    }
-
-    pub fn contextualize(&self, term: Term) -> Contextualized {
-        Contextualized(term, self.clone())
+        self.0.borrow().iter().rev().nth(symbol.0).cloned()
     }
 }
 
@@ -181,10 +177,7 @@ impl FromStr for Definitions {
                         )],
                     })
                 } else {
-                    Ok(Definitions {
-                        terms,
-                        context: ctx,
-                    })
+                    Ok(Definitions { terms })
                 }
             });
 
