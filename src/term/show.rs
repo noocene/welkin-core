@@ -30,6 +30,27 @@ impl Term {
                 .and_then(|_| expression.write(f, ctx))
                 .and_then(|_| write!(f, " "))
                 .and_then(|_| body.write(f, &mut ctx.with(binding.clone()))),
+            Universe => write!(f, "*"),
+            Wrap(term) => write!(f, "!").and_then(|_| term.write(f, ctx)),
+            Annotation { expression, ty, .. } => write!(f, "{{ ")
+                .and_then(|_| expression.write(f, ctx))
+                .and_then(|_| write!(f, " : "))
+                .and_then(|_| ty.write(f, ctx))
+                .and_then(|_| write!(f, " }}")),
+            Function {
+                self_binding,
+                argument_binding,
+                argument_type,
+                return_type,
+            } => {
+                let mut ctx = ctx
+                    .with(self_binding.clone())
+                    .with(argument_binding.clone());
+                write!(f, "+{},{}:", self_binding, argument_binding)
+                    .and_then(|_| argument_type.write(f, &mut ctx))
+                    .and_then(|_| write!(f, " "))
+                    .and_then(|_| return_type.write(f, &mut ctx))
+            }
         }
     }
 }

@@ -7,30 +7,14 @@ false = \t \f
 not = \b \t \f
     (b f t)
 
-0 = \s
-    : S = s
-    . \z z
-
-1 = \s
-    : S = s
-    . \z (S z)
-
-2 = \s
-    : S = s
-    . \z (S (S z))
+dup = \x
+    : X = x
+    . \a (X (X a))
 
 id = \x x
 
-test = \x
-    : X = x
-    . (X X)
-
-boxedId = (test .id)
-boxedIdTrivial = .id
-
-appfalse = \x
-    : X = x
-    .(X false)
-
-
-main = boxedId
+main =
+    : Not = (dup .not)
+    : Id = (dup .Not)
+    : Idd = (dup .Id)
+    . (Idd false)

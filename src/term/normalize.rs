@@ -1,6 +1,4 @@
-use std::collections::HashMap;
-
-use super::Term;
+use super::{Definitions, Term};
 
 #[derive(Debug)]
 pub enum NormalizationError {
@@ -26,17 +24,31 @@ impl Term {
             Put(term) => {
                 term.shift(increment, depth);
             }
+            Annotation { expression, .. } => {
+                expression.shift(increment, depth);
+            }
+            Wrap(term) => {
+                term.shift(increment, depth);
+            }
             Duplicate {
                 expression, body, ..
             } => {
                 expression.shift(increment, depth);
                 body.shift(increment, depth + 1);
             }
-            Reference(_) => {}
+            Function {
+                argument_type,
+                return_type,
+                ..
+            } => {
+                argument_type.shift(increment, depth);
+                return_type.shift(increment, depth + 1);
+            }
+            Reference(_) | Universe => {}
         }
     }
 
-    fn substitute(&mut self, value: &Term, depth: usize) {
+    pub(crate) fn substitute(&mut self, value: &Term, depth: usize) {
         use Term::*;
 
         match self {
@@ -59,6 +71,9 @@ impl Term {
             Put(term) => {
                 term.substitute(value, depth);
             }
+            Wrap(term) => {
+                term.substitute(value, depth);
+            }
             Duplicate {
                 body, expression, ..
             } => {
@@ -67,13 +82,25 @@ impl Term {
                 value.shift(1, 0);
                 body.substitute(&value, depth + 1);
             }
-            Reference(_) => {}
+            Annotation { expression, .. } => expression.substitute(value, depth),
+            Reference(_) | Universe => {}
+            Function {
+                argument_type,
+                return_type,
+                ..
+            } => {
+                argument_type.substitute(value, depth);
+
+                let mut value = value.clone();
+                value.shift(1, 0);
+                return_type.substitute(&value, depth + 1);
+            }
         }
     }
 
-    pub(crate) fn normalize(
+    pub(crate) fn normalize<T: Definitions>(
         &mut self,
-        definitions: &HashMap<String, Term>,
+        definitions: &T,
     ) -> Result<(), NormalizationError> {
         use Term::*;
 
@@ -90,7 +117,18 @@ impl Term {
             Lambda { body, .. } => {
                 body.normalize(definitions)?;
             }
+            Function {
+                return_type,
+                argument_type,
+                ..
+            } => {
+                argument_type.normalize(definitions)?;
+                return_type.normalize(definitions)?;
+            }
             Put(term) => {
+                term.normalize(definitions)?;
+            }
+            Wrap(term) => {
                 term.normalize(definitions)?;
             }
             Duplicate {
@@ -165,7 +203,12 @@ impl Term {
                     }
                 }
             }
-            Symbol(_) => {}
+            Annotation { expression, ty, .. } => {
+                expression.normalize(definitions)?;
+                ty.normalize(definitions)?;
+                *self = *expression.clone();
+            }
+            Symbol(_) | Universe => {}
         }
 
         Ok(())

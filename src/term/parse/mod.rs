@@ -1,5 +1,8 @@
 use std::{cell::RefCell, rc::Rc, str::FromStr};
 
+pub mod typed;
+pub mod untyped;
+
 use combine::{
     many, many1, parser,
     parser::char::{alpha_num, spaces},
@@ -13,6 +16,13 @@ where
     Input: Stream<Token = char>,
 {
     spaces().with(many1(alpha_num()))
+}
+
+fn maybe_name<Input>() -> impl Parser<Input, Output = String>
+where
+    Input: Stream<Token = char>,
+{
+    spaces().with(many(alpha_num()))
 }
 
 fn token<Input>(token: char) -> impl Parser<Input, Output = char>
@@ -68,6 +78,14 @@ parser! {
 }
 
 parser! {
+    fn wrap[Input](ctx: Context)(Input) -> Term
+        where [Input: Stream<Token = char>]
+    {
+        term(ctx.clone()).map(Box::new).map(Term::Wrap)
+    }
+}
+
+parser! {
     fn duplicate[Input](ctx: Context)(Input) -> Term
         where [Input: Stream<Token = char>]
     {
@@ -87,16 +105,25 @@ parser! {
     }
 }
 
+parser! {
+    fn annotation[Input](ctx: Context)(Input) -> Term
+        where [Input: Stream<Token = char>]
+    {
+        (term(ctx.clone()).skip(token(':')).map(Box::new), term(ctx.clone()).map(Box::new)).map(|(expression, ty)| {
+            Term::Annotation {
+                expression,
+                ty,
+                checked: false
+            }
+        })
+    }
+}
+
 #[derive(Debug)]
 pub struct InUse;
 
 #[derive(Clone, Default)]
 pub struct Context(Rc<RefCell<Vec<String>>>);
-
-#[derive(Clone, Default)]
-pub struct Definitions {
-    pub terms: Vec<(String, Term)>,
-}
 
 impl Context {
     pub(crate) fn with(&mut self, name: String) -> Self {
@@ -118,71 +145,53 @@ impl Context {
     }
 }
 
+parser! {
+    fn function[Input](ctx: Context)(Input) -> Term
+        where [Input: Stream<Token = char>]
+    {
+        (
+            maybe_name().skip(token(',')),
+            maybe_name().skip(token(':')),
+        )
+        .then({
+            let mut ctx = ctx.clone();
+            move |(self_binding, argument_binding)| {
+                let ctx = ctx.with(self_binding.clone()).with(argument_binding.clone());
+                (value(self_binding), value(argument_binding), term(ctx.clone()).map(Box::new), term(ctx).map(Box::new))
+            }
+        })
+        .map(|(self_binding, argument_binding, argument_type, return_type)| {
+            println!("{}", self_binding);
+            Term::Function {
+                self_binding,
+                argument_binding,
+                argument_type,
+                return_type
+            }
+        })
+    }
+}
+
 fn term<Input>(ctx: Context) -> impl Parser<Input, Output = Term>
 where
     Input: Stream<Token = char>,
 {
     let parser = token('\\').with(lambda(ctx.clone()));
     let parser = parser.or(token('(').with(apply(ctx.clone())).skip(token(')')));
+    let parser = parser.or(token('{').with(annotation(ctx.clone())).skip(token('}')));
     let parser = parser.or(token('.').with(_box(ctx.clone())));
     let parser = parser.or(token(':').with(duplicate(ctx.clone())));
+    let parser = parser.or(token('+').with(function(ctx.clone())));
+    let parser = parser.or(token('*').with(value(Term::Universe)));
+    let parser = parser.or(token('!').with(wrap(ctx.clone())));
     let parser = parser.or(reference(ctx));
     spaces().with(parser)
-}
-
-fn definition<Input>(ctx: Context) -> impl Parser<Input, Output = (String, Term)>
-where
-    Input: Stream<Token = char>,
-{
-    (name().skip(token('=')), term(ctx))
-}
-
-fn definitions<Input>(ctx: Context) -> impl Parser<Input, Output = Vec<(String, Term)>>
-where
-    Input: Stream<Token = char>,
-{
-    many(definition(ctx))
 }
 
 #[derive(Debug)]
 pub struct Errors {
     pub position: usize,
     pub errors: Vec<String>,
-}
-
-impl FromStr for Definitions {
-    type Err = Errors;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s = s
-            .split('\n')
-            .filter(|line| !line.starts_with("-") && !line.is_empty())
-            .collect::<Vec<_>>()
-            .join("\n");
-        let ctx: Context = Default::default();
-        let data = definitions(ctx.clone())
-            .easy_parse(s.as_str())
-            .map_err(|e| Errors {
-                position: e.position.translate_position(&s),
-                errors: e.errors.into_iter().map(|a| format!("{}", a)).collect(),
-            })
-            .and_then(|(terms, remainder)| {
-                if !remainder.is_empty() {
-                    Err(Errors {
-                        position: s.len() - 1,
-                        errors: vec![format!(
-                            "parsing finished with {} chars left over: {:?}",
-                            remainder.len(),
-                            remainder
-                        )],
-                    })
-                } else {
-                    Ok(Definitions { terms })
-                }
-            });
-
-        data
-    }
 }
 
 impl FromStr for Term {

@@ -1,11 +1,9 @@
-use std::collections::HashMap;
-
-use super::{normalize::NormalizationError, Term};
+use super::{normalize::NormalizationError, Definitions, Term};
 
 #[derive(Debug, Clone)]
-pub struct Stratified<'a>(pub(crate) Term, pub(crate) &'a HashMap<String, Term>);
+pub struct Stratified<'a, T: Definitions>(pub(crate) Term, pub(crate) &'a T);
 
-impl<'a> Stratified<'a> {
+impl<'a, T: Definitions> Stratified<'a, T> {
     pub fn normalize(&mut self) -> Result<(), NormalizationError> {
         self.0.normalize(self.1)
     }
@@ -44,6 +42,14 @@ impl Term {
                 Duplicate {
                     expression, body, ..
                 } => uses_helper(expression, depth) + uses_helper(body, depth + 1),
+                Universe => 0,
+                Wrap(term) => uses_helper(term, depth),
+                Annotation { expression, .. } => uses_helper(expression, depth),
+                Function {
+                    return_type,
+                    argument_type,
+                    ..
+                } => uses_helper(return_type, depth + 1) + uses_helper(argument_type, depth),
             }
         }
 
@@ -62,19 +68,27 @@ impl Term {
                     && argument.is_at_level(target_level, depth, level)
             }
             Put(term) => term.is_at_level(target_level, depth, level + 1),
+            Wrap(term) => term.is_at_level(target_level, depth, level),
+            Annotation { expression, .. } => expression.is_at_level(target_level, depth, level),
             Duplicate {
                 expression, body, ..
             } => {
                 expression.is_at_level(target_level, depth, level)
                     && body.is_at_level(target_level, depth + 1, level)
             }
+            Universe => true,
+            Function {
+                argument_type,
+                return_type,
+                ..
+            } => {
+                argument_type.is_at_level(target_level, depth, level)
+                    && return_type.is_at_level(target_level, depth + 1, level)
+            }
         }
     }
 
-    fn is_stratified(
-        &self,
-        definitions: &HashMap<String, Term>,
-    ) -> Result<(), StratificationError> {
+    fn is_stratified<T: Definitions>(&self, definitions: &T) -> Result<(), StratificationError> {
         use Term::*;
 
         match &self {
@@ -100,6 +114,20 @@ impl Term {
             Put(term) => {
                 term.is_stratified(definitions)?;
             }
+            Wrap(term) => {
+                term.is_stratified(definitions)?;
+            }
+            Annotation { expression, .. } => {
+                expression.is_stratified(definitions)?;
+            }
+            Function {
+                argument_type,
+                return_type,
+                ..
+            } => {
+                argument_type.is_stratified(definitions)?;
+                return_type.is_stratified(definitions)?;
+            }
             Duplicate {
                 binding,
                 body,
@@ -121,16 +149,21 @@ impl Term {
                     return Err(StratificationError::UndefinedReference { name: name.clone() });
                 }
             }
-            Symbol(_) => {}
+            Symbol(_) | Universe => {}
         }
 
         Ok(())
     }
 
-    pub fn stratified(
+    pub fn stratified<T: Definitions>(
         self,
-        definitions: &HashMap<String, Term>,
-    ) -> Result<Stratified<'_>, StratificationError> {
+        definitions: &T,
+    ) -> Result<Stratified<'_, T>, StratificationError> {
+        println!("normed: {:?}", {
+            let mut item = self.clone();
+            item.normalize(definitions).unwrap();
+            item
+        });
         self.is_stratified(definitions)?;
         Ok(Stratified(self, definitions))
     }

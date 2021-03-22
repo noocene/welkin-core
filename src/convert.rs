@@ -1,16 +1,14 @@
-use std::collections::HashMap;
-
 use crate::{
     net::{AgentType, Port, Storage},
-    term::{Stratified, Term},
+    term::{Definitions, Stratified, Term},
     Net,
 };
 
-fn build_net<T: Storage + Clone + Eq>(
+fn build_net<T: Storage + Clone + Eq, U: Definitions>(
     term: &Term,
     net: &mut Net<T>,
     level: usize,
-    definitions: &HashMap<String, Term>,
+    definitions: &U,
     var_ptrs: &mut Vec<Port<T>>,
 ) -> Port<T> {
     use Term::*;
@@ -61,14 +59,15 @@ fn build_net<T: Storage + Clone + Eq>(
             net.connect(apply.left, argument);
             apply.right
         }
+        _ => panic!("cannot translate typed net!"),
     }
 }
 
-impl<'a, T: Storage + Clone + Eq + Copy> From<Stratified<'a>> for Net<T> {
-    fn from(terms: Stratified) -> Self {
+impl<'a, T: Storage + Clone + Eq + Copy, U: Definitions> From<Stratified<'a, U>> for Net<T> {
+    fn from(terms: Stratified<'_, U>) -> Self {
         let (mut net, root) = Net::new();
         let mut var_ptrs = vec![];
-        let entry = build_net(&terms.0, &mut net, 0, &terms.1, &mut var_ptrs);
+        let entry = build_net(&terms.0, &mut net, 0, terms.1, &mut var_ptrs);
         net.connect(root, entry);
         net.bind_unbound();
         net
