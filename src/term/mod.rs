@@ -1,5 +1,3 @@
-mod check;
-mod infer;
 mod normalize;
 mod parse;
 mod show;
