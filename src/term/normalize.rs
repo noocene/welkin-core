@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::Term;
+use super::{Index, Term};
 
 #[derive(Debug)]
 pub enum NormalizationError {
@@ -9,66 +9,76 @@ pub enum NormalizationError {
 }
 
 impl Term {
-    fn shift(&mut self, increment: usize, depth: usize) {
+    fn shift(&mut self, replaced: Index) {
         use Term::*;
 
         match self {
-            Symbol(symbol) => {
-                if !(symbol.0 < depth) {
-                    symbol.0 += increment;
+            Variable(index) => {
+                if index.within(replaced) || *index == replaced {
+                    *index = index.child();
                 }
             }
-            Lambda { body, .. } => body.shift(increment, depth + 1),
+            Lambda { body, .. } => body.shift(replaced.child()),
             Apply { function, argument } => {
-                function.shift(increment, depth);
-                argument.shift(increment, depth);
+                function.shift(replaced);
+                argument.shift(replaced);
             }
             Put(term) => {
-                term.shift(increment, depth);
+                term.shift(replaced);
             }
             Duplicate {
                 expression, body, ..
             } => {
-                expression.shift(increment, depth);
-                body.shift(increment, depth + 1);
+                expression.shift(replaced);
+                body.shift(replaced.child());
             }
             Reference(_) => {}
         }
     }
 
-    fn substitute(&mut self, value: &Term, depth: usize) {
+    fn shift_top(&mut self) {
+        self.shift(Index::top())
+    }
+
+    fn substitute_shifted(&mut self, variable: Index, term: &Term) {
+        let mut term = term.clone();
+        term.shift_top();
+        self.substitute(variable.child(), &term)
+    }
+
+    fn substitute(&mut self, variable: Index, term: &Term) {
         use Term::*;
 
         match self {
-            Symbol(symbol) => {
-                if depth == symbol.0 {
-                    *self = value.clone();
-                } else if symbol.0 > depth {
-                    symbol.0 -= 1;
+            Variable(idx) => {
+                if variable == *idx {
+                    *self = term.clone();
+                } else if idx.within(variable) {
+                    *idx = idx.parent();
                 }
             }
             Lambda { body, .. } => {
-                let mut value = value.clone();
-                value.shift(1, 0);
-                body.substitute(&value, depth + 1);
+                body.substitute_shifted(variable, term);
             }
             Apply { function, argument } => {
-                function.substitute(value, depth);
-                argument.substitute(value, depth);
+                function.substitute(variable, term);
+                argument.substitute(variable, term);
             }
-            Put(term) => {
-                term.substitute(value, depth);
+            Put(expr) => {
+                expr.substitute(variable, term);
             }
             Duplicate {
                 body, expression, ..
             } => {
-                expression.substitute(value, depth);
-                let mut value = value.clone();
-                value.shift(1, 0);
-                body.substitute(&value, depth + 1);
+                expression.substitute(variable, term);
+                body.substitute_shifted(variable, term);
             }
             Reference(_) => {}
         }
+    }
+
+    fn substitute_top(&mut self, term: &Term) {
+        self.substitute(Index::top(), term)
     }
 
     pub(crate) fn normalize(
@@ -101,7 +111,7 @@ impl Term {
                 expression.normalize(definitions)?;
                 match &**expression {
                     Put(expression) => {
-                        body.substitute(&expression, 0);
+                        body.substitute_top(expression);
                         body.normalize(definitions)?;
                         *self = *body.clone();
                     }
@@ -110,7 +120,7 @@ impl Term {
                         expression,
                         body: new_body,
                     } => {
-                        body.shift(1, 1);
+                        body.shift(Index::top().child());
                         let binding = binding.clone();
                         let dup = Duplicate {
                             body: body.clone(),
@@ -142,7 +152,7 @@ impl Term {
                         binding,
                     } => {
                         let mut argument = argument.clone();
-                        argument.shift(1, 0);
+                        argument.shift_top();
                         let body = Box::new(Apply {
                             function: body,
                             argument,
@@ -156,7 +166,7 @@ impl Term {
                         *self = term;
                     }
                     Lambda { mut body, .. } => {
-                        body.substitute(argument, 0);
+                        body.substitute_top(argument);
                         body.normalize(definitions)?;
                         *self = *body;
                     }
@@ -165,7 +175,7 @@ impl Term {
                     }
                 }
             }
-            Symbol(_) => {}
+            Variable(_) => {}
         }
 
         Ok(())

@@ -7,11 +7,11 @@ impl Term {
         use Term::*;
 
         match &self {
-            Symbol(symbol) => write!(
+            Variable(index) => write!(
                 f,
                 "{}",
-                ctx.lookup(*symbol)
-                    .unwrap_or_else(|| { format!("^{}", symbol.0) })
+                ctx.lookup(*index)
+                    .unwrap_or_else(|| { format!("^{}", index.0) })
             ),
             Lambda { binding, body } => write!(f, "\\{} ", binding)
                 .and_then(|_| body.write(f, &mut ctx.with(binding.clone()))),
