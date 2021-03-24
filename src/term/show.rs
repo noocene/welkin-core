@@ -42,15 +42,15 @@ impl Term {
                 argument_binding,
                 argument_type,
                 return_type,
-            } => {
-                let mut ctx = ctx
-                    .with(self_binding.clone())
-                    .with(argument_binding.clone());
-                write!(f, "+{},{}:", self_binding, argument_binding)
-                    .and_then(|_| argument_type.write(f, &mut ctx))
-                    .and_then(|_| write!(f, " "))
-                    .and_then(|_| return_type.write(f, &mut ctx))
-            }
+            } => write!(f, "+{},{}:", self_binding, argument_binding)
+                .and_then(|_| argument_type.write(f, ctx))
+                .and_then(|_| write!(f, " "))
+                .and_then(|_| {
+                    let mut ctx = ctx
+                        .with(self_binding.clone())
+                        .with(argument_binding.clone());
+                    return_type.write(f, &mut ctx)
+                }),
         }
     }
 }
