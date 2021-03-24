@@ -50,34 +50,36 @@ impl Term {
         uses_helper(self, Index::top())
     }
 
-    fn n_boxes(&self, nestings: usize) -> bool {
+    fn is_boxed_n_times(&self, nestings: usize) -> bool {
         use Term::*;
 
         fn n_boxes_helper(
             this: &Term,
+            variable: Index,
             nestings: usize,
-            level: usize,
             current_nestings: usize,
         ) -> bool {
             match this {
                 Reference(_) => true,
-                Variable(index) => index.0 != level || nestings == current_nestings,
-                Lambda { body, .. } => n_boxes_helper(body, nestings, level + 1, current_nestings),
-                Apply { function, argument } => {
-                    n_boxes_helper(function, nestings, level, current_nestings)
-                        && n_boxes_helper(argument, nestings, level, current_nestings)
+                Variable(index) => *index != variable || nestings == current_nestings,
+                Lambda { body, .. } => {
+                    n_boxes_helper(body, variable.child(), nestings, current_nestings)
                 }
-                Put(term) => n_boxes_helper(term, nestings, level, current_nestings + 1),
+                Apply { function, argument } => {
+                    n_boxes_helper(function, variable, nestings, current_nestings)
+                        && n_boxes_helper(argument, variable, nestings, current_nestings)
+                }
+                Put(term) => n_boxes_helper(term, variable, nestings, current_nestings + 1),
                 Duplicate {
                     expression, body, ..
                 } => {
-                    n_boxes_helper(expression, nestings, level, current_nestings)
-                        && n_boxes_helper(body, nestings, level + 1, current_nestings)
+                    n_boxes_helper(expression, variable, nestings, current_nestings)
+                        && n_boxes_helper(body, variable.child(), nestings, current_nestings)
                 }
             }
         }
 
-        n_boxes_helper(self, nestings, 0, 0)
+        n_boxes_helper(self, Index::top(), nestings, 0)
     }
 
     fn is_stratified(
@@ -94,7 +96,7 @@ impl Term {
                         term: self.clone(),
                     });
                 }
-                if !body.n_boxes(0) {
+                if !body.is_boxed_n_times(0) {
                     return Err(StratificationError::AffineUsedInBox {
                         name: binding.clone(),
                         term: self.clone(),
@@ -114,7 +116,7 @@ impl Term {
                 body,
                 expression,
             } => {
-                if !body.n_boxes(1) {
+                if !body.is_boxed_n_times(1) {
                     return Err(StratificationError::DupNonUnitBoxMultiplicity {
                         name: binding.clone(),
                         term: self.clone(),
