@@ -11,8 +11,6 @@ dup = \x
     : X = x
     . \a (X (X a))
 
-id = \x x
-
 main =
     : Not = (dup .not)
     : Id = (dup .Not)

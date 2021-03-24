@@ -226,10 +226,7 @@ impl<T: Storage + Clone> Net<T> {
         }
     }
 
-    fn free(&mut self, address: Index)
-    where
-        T: Eq,
-    {
+    fn free(&mut self, address: Index) {
         self.freed.push(address);
     }
 
@@ -237,13 +234,23 @@ impl<T: Storage + Clone> Net<T> {
         self.get(x.address())
     }
 
-    pub fn reduce(&mut self)
-    where
-        T: Debug + Eq,
-    {
-        if let Some((a, b)) = self.active.pop() {
+    pub fn reduce(&mut self, max_rewrites: Option<usize>) -> usize {
+        let mut rewrites = 0;
+
+        while let Some((a, b)) = self.active.pop() {
             self.rewrite(a, b);
+            rewrites += 1;
+            match max_rewrites {
+                Some(max) if max == rewrites => break,
+                _ => {}
+            }
         }
+
+        rewrites
+    }
+
+    pub fn reduce_all(&mut self) -> usize {
+        self.reduce(None)
     }
 
     pub(crate) fn bind_unbound(&mut self)
@@ -259,10 +266,7 @@ impl<T: Storage + Clone> Net<T> {
         }
     }
 
-    fn rewrite(&mut self, x: Index, y: Index)
-    where
-        T: Debug + Eq,
-    {
+    fn rewrite(&mut self, x: Index, y: Index) {
         use AgentType::Epsilon;
 
         let x_ty = self.get(x).ty();

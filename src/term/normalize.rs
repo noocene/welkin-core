@@ -1,4 +1,4 @@
-use super::{Definitions, Term};
+use super::{Definitions, Index, Term};
 
 #[derive(Debug)]
 pub enum NormalizationError {
@@ -7,100 +7,83 @@ pub enum NormalizationError {
 }
 
 impl Term {
-    fn shift(&mut self, increment: usize, depth: usize) {
+    fn shift(&mut self, replaced: Index) {
         use Term::*;
 
         match self {
-            Symbol(symbol) => {
-                if !(symbol.0 < depth) {
-                    symbol.0 += increment;
+            Variable(index) => {
+                if index.within(replaced) || *index == replaced {
+                    *index = index.child();
                 }
             }
-            Lambda { body, .. } => body.shift(increment, depth + 1),
+            Lambda { body, .. } => body.shift(replaced.child()),
             Apply { function, argument } => {
-                function.shift(increment, depth);
-                argument.shift(increment, depth);
+                function.shift(replaced);
+                argument.shift(replaced);
             }
             Put(term) => {
-                term.shift(increment, depth);
-            }
-            Annotation { expression, .. } => {
-                expression.shift(increment, depth);
-            }
-            Wrap(term) => {
-                term.shift(increment, depth);
+                term.shift(replaced);
             }
             Duplicate {
                 expression, body, ..
             } => {
-                expression.shift(increment, depth);
-                body.shift(increment, depth + 1);
+                expression.shift(replaced);
+                body.shift(replaced.child());
             }
-            Function {
-                argument_type,
-                return_type,
-                ..
-            } => {
-                argument_type.shift(increment, depth);
-                return_type.shift(increment, depth + 1);
-            }
-            Reference(_) | Universe => {}
+            Reference(_) => {}
+            _ => todo!("handle typed terms"),
         }
     }
 
-    pub(crate) fn substitute(&mut self, value: &Term, depth: usize) {
+    fn shift_top(&mut self) {
+        self.shift(Index::top())
+    }
+
+    fn substitute_shifted(&mut self, variable: Index, term: &Term) {
+        let mut term = term.clone();
+        term.shift_top();
+        self.substitute(variable.child(), &term)
+    }
+
+    fn substitute(&mut self, variable: Index, term: &Term) {
         use Term::*;
 
         match self {
-            Symbol(symbol) => {
-                if depth == symbol.0 {
-                    *self = value.clone();
-                } else if symbol.0 > depth {
-                    symbol.0 -= 1;
+            Variable(idx) => {
+                if variable == *idx {
+                    *self = term.clone();
+                } else if idx.within(variable) {
+                    *idx = idx.parent();
                 }
             }
             Lambda { body, .. } => {
-                let mut value = value.clone();
-                value.shift(1, 0);
-                body.substitute(&value, depth + 1);
+                body.substitute_shifted(variable, term);
             }
             Apply { function, argument } => {
-                function.substitute(value, depth);
-                argument.substitute(value, depth);
+                function.substitute(variable, term);
+                argument.substitute(variable, term);
             }
-            Put(term) => {
-                term.substitute(value, depth);
-            }
-            Wrap(term) => {
-                term.substitute(value, depth);
+            Put(expr) => {
+                expr.substitute(variable, term);
             }
             Duplicate {
                 body, expression, ..
             } => {
-                expression.substitute(value, depth);
-                let mut value = value.clone();
-                value.shift(1, 0);
-                body.substitute(&value, depth + 1);
+                expression.substitute(variable, term);
+                body.substitute_shifted(variable, term);
             }
-            Annotation { expression, .. } => expression.substitute(value, depth),
-            Reference(_) | Universe => {}
-            Function {
-                argument_type,
-                return_type,
-                ..
-            } => {
-                argument_type.substitute(value, depth);
-
-                let mut value = value.clone();
-                value.shift(1, 0);
-                return_type.substitute(&value, depth + 1);
-            }
+            Reference(_) => {}
+            _ => todo!("handle typed terms"),
         }
     }
 
-    pub(crate) fn normalize<T: Definitions>(
+    fn substitute_top(&mut self, term: &Term) {
+        self.substitute(Index::top(), term)
+    }
+
+    pub(crate) fn normalize<U: Definitions>(
         &mut self,
-        definitions: &T,
+        definitions: &U,
     ) -> Result<(), NormalizationError> {
         use Term::*;
 
@@ -117,18 +100,7 @@ impl Term {
             Lambda { body, .. } => {
                 body.normalize(definitions)?;
             }
-            Function {
-                return_type,
-                argument_type,
-                ..
-            } => {
-                argument_type.normalize(definitions)?;
-                return_type.normalize(definitions)?;
-            }
             Put(term) => {
-                term.normalize(definitions)?;
-            }
-            Wrap(term) => {
                 term.normalize(definitions)?;
             }
             Duplicate {
@@ -139,7 +111,7 @@ impl Term {
                 expression.normalize(definitions)?;
                 match &**expression {
                     Put(expression) => {
-                        body.substitute(&expression, 0);
+                        body.substitute_top(expression);
                         body.normalize(definitions)?;
                         *self = *body.clone();
                     }
@@ -148,7 +120,7 @@ impl Term {
                         expression,
                         body: new_body,
                     } => {
-                        body.shift(1, 1);
+                        body.shift(Index::top().child());
                         let binding = binding.clone();
                         let dup = Duplicate {
                             body: body.clone(),
@@ -180,7 +152,7 @@ impl Term {
                         binding,
                     } => {
                         let mut argument = argument.clone();
-                        argument.shift(1, 0);
+                        argument.shift_top();
                         let body = Box::new(Apply {
                             function: body,
                             argument,
@@ -194,7 +166,7 @@ impl Term {
                         *self = term;
                     }
                     Lambda { mut body, .. } => {
-                        body.substitute(argument, 0);
+                        body.substitute_top(argument);
                         body.normalize(definitions)?;
                         *self = *body;
                     }
@@ -203,12 +175,8 @@ impl Term {
                     }
                 }
             }
-            Annotation { expression, ty, .. } => {
-                expression.normalize(definitions)?;
-                ty.normalize(definitions)?;
-                *self = *expression.clone();
-            }
-            Symbol(_) | Universe => {}
+            Variable(_) => {}
+            _ => todo!("handle typed terms"),
         }
 
         Ok(())

@@ -7,7 +7,7 @@ impl Term {
         use Term::*;
 
         match &self {
-            Symbol(symbol) => write!(
+            Variable(symbol) => write!(
                 f,
                 "{}",
                 ctx.lookup(*symbol)

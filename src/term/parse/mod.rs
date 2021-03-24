@@ -9,7 +9,7 @@ use combine::{
     token as bare_token, value, EasyParser, Parser, Stream,
 };
 
-use super::{Symbol, Term};
+use super::{Index, Term};
 
 fn name<Input>() -> impl Parser<Input, Output = String>
 where
@@ -65,7 +65,7 @@ parser! {
     fn reference[Input](ctx: Context)(Input) -> Term
         where [Input: Stream<Token = char>]
     {
-        name().map(move |name| ctx.resolve(&name).map(Term::Symbol).unwrap_or(Term::Reference(name)))
+        name().map(move |name| ctx.resolve(&name).map(Term::Variable).unwrap_or(Term::Reference(name)))
     }
 }
 
@@ -131,16 +131,16 @@ impl Context {
         self.clone()
     }
 
-    fn resolve(&self, name: &str) -> Option<Symbol> {
+    fn resolve(&self, name: &str) -> Option<Index> {
         for (idx, binding) in self.0.borrow().iter().rev().enumerate() {
             if name == binding {
-                return Some(Symbol(idx));
+                return Some(Index(idx));
             }
         }
         None
     }
 
-    pub(crate) fn lookup(&self, symbol: Symbol) -> Option<String> {
+    pub(crate) fn lookup(&self, symbol: Index) -> Option<String> {
         self.0.borrow().iter().rev().nth(symbol.0).cloned()
     }
 }

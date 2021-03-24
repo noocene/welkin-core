@@ -1,3 +1,4 @@
+mod index;
 mod normalize;
 mod parse;
 mod show;
@@ -7,13 +8,13 @@ use std::collections::HashMap;
 pub use parse::{typed, untyped};
 pub use stratified::{StratificationError, Stratified};
 
-#[derive(Debug, Clone, Copy)]
-pub struct Symbol(pub(crate) usize);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Index(pub(crate) usize);
 
 #[derive(Clone)]
 pub enum Term {
     // Untyped language
-    Symbol(Symbol),
+    Variable(Index),
     Lambda {
         binding: String,
         body: Box<Term>,
@@ -30,7 +31,7 @@ pub enum Term {
     },
     Reference(String),
 
-    // Types,
+    // Typed extensions,
     Universe,
     Function {
         self_binding: String,

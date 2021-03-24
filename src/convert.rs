@@ -14,7 +14,7 @@ fn build_net<T: Storage + Clone + Eq, U: Definitions>(
     use Term::*;
 
     match term {
-        Symbol(symbol) => {
+        Variable(symbol) => {
             let ptr = var_ptrs.iter().rev().nth(symbol.0).unwrap().clone();
             let target = net.follow(ptr.clone());
             if target.address().is_root() || target == ptr {

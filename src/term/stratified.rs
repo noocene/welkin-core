@@ -1,9 +1,9 @@
-use super::{normalize::NormalizationError, Definitions, Term};
+use super::{normalize::NormalizationError, Definitions, Index, Term};
 
 #[derive(Debug, Clone)]
-pub struct Stratified<'a, T: Definitions>(pub(crate) Term, pub(crate) &'a T);
+pub struct Stratified<'a, U: Definitions>(pub(crate) Term, pub(crate) &'a U);
 
-impl<'a, T: Definitions> Stratified<'a, T> {
+impl<'a, U: Definitions> Stratified<'a, U> {
     pub fn normalize(&mut self) -> Result<(), NormalizationError> {
         self.0.normalize(self.1)
     }
@@ -23,72 +23,64 @@ pub enum StratificationError {
 
 impl Term {
     fn uses(&self) -> usize {
-        fn uses_helper(term: &Term, depth: usize) -> usize {
+        fn uses_helper(term: &Term, variable: Index) -> usize {
             use Term::*;
             match term {
-                Symbol(symbol) => {
-                    if symbol.0 == depth {
+                Variable(index) => {
+                    if *index == variable {
                         1
                     } else {
                         0
                     }
                 }
                 Reference(_) => 0,
-                Lambda { body, .. } => uses_helper(body, depth + 1),
+                Lambda { body, .. } => uses_helper(body, variable.child()),
                 Apply { function, argument } => {
-                    uses_helper(function, depth) + uses_helper(argument, depth)
+                    uses_helper(function, variable) + uses_helper(argument, variable)
                 }
-                Put(term) => uses_helper(term, depth),
+                Put(term) => uses_helper(term, variable),
                 Duplicate {
                     expression, body, ..
-                } => uses_helper(expression, depth) + uses_helper(body, depth + 1),
-                Universe => 0,
-                Wrap(term) => uses_helper(term, depth),
-                Annotation { expression, .. } => uses_helper(expression, depth),
-                Function {
-                    return_type,
-                    argument_type,
-                    ..
-                } => uses_helper(return_type, depth + 1) + uses_helper(argument_type, depth),
+                } => uses_helper(expression, variable) + uses_helper(body, variable.child()),
+                _ => todo!("handle typed terms"),
             }
         }
 
-        uses_helper(self, 0)
+        uses_helper(self, Index::top())
     }
 
-    fn is_at_level(&self, target_level: usize, depth: usize, level: usize) -> bool {
+    fn n_boxes(&self, nestings: usize) -> bool {
         use Term::*;
 
-        match self {
-            Reference(_) => true,
-            Symbol(symbol) => symbol.0 != depth || level == target_level,
-            Lambda { body, .. } => body.is_at_level(target_level, depth + 1, level),
-            Apply { function, argument } => {
-                function.is_at_level(target_level, depth, level)
-                    && argument.is_at_level(target_level, depth, level)
-            }
-            Put(term) => term.is_at_level(target_level, depth, level + 1),
-            Wrap(term) => term.is_at_level(target_level, depth, level),
-            Annotation { expression, .. } => expression.is_at_level(target_level, depth, level),
-            Duplicate {
-                expression, body, ..
-            } => {
-                expression.is_at_level(target_level, depth, level)
-                    && body.is_at_level(target_level, depth + 1, level)
-            }
-            Universe => true,
-            Function {
-                argument_type,
-                return_type,
-                ..
-            } => {
-                argument_type.is_at_level(target_level, depth, level)
-                    && return_type.is_at_level(target_level, depth + 1, level)
+        fn n_boxes_helper(
+            this: &Term,
+            nestings: usize,
+            level: usize,
+            current_nestings: usize,
+        ) -> bool {
+            match this {
+                Reference(_) => true,
+                Variable(index) => index.0 != level || nestings == current_nestings,
+                Lambda { body, .. } => n_boxes_helper(body, nestings, level + 1, current_nestings),
+                Apply { function, argument } => {
+                    n_boxes_helper(function, nestings, level, current_nestings)
+                        && n_boxes_helper(argument, nestings, level, current_nestings)
+                }
+                Put(term) => n_boxes_helper(term, nestings, level, current_nestings + 1),
+                Duplicate {
+                    expression, body, ..
+                } => {
+                    n_boxes_helper(expression, nestings, level, current_nestings)
+                        && n_boxes_helper(body, nestings, level + 1, current_nestings)
+                }
+                _ => todo!("handle typed terms"),
             }
         }
+
+        n_boxes_helper(self, nestings, 0, 0)
     }
 
-    fn is_stratified<T: Definitions>(&self, definitions: &T) -> Result<(), StratificationError> {
+    fn is_stratified<U: Definitions>(&self, definitions: &U) -> Result<(), StratificationError> {
         use Term::*;
 
         match &self {
@@ -99,7 +91,7 @@ impl Term {
                         term: self.clone(),
                     });
                 }
-                if !body.is_at_level(0, 0, 0) {
+                if !body.n_boxes(0) {
                     return Err(StratificationError::AffineUsedInBox {
                         name: binding.clone(),
                         term: self.clone(),
@@ -114,26 +106,12 @@ impl Term {
             Put(term) => {
                 term.is_stratified(definitions)?;
             }
-            Wrap(term) => {
-                term.is_stratified(definitions)?;
-            }
-            Annotation { expression, .. } => {
-                expression.is_stratified(definitions)?;
-            }
-            Function {
-                argument_type,
-                return_type,
-                ..
-            } => {
-                argument_type.is_stratified(definitions)?;
-                return_type.is_stratified(definitions)?;
-            }
             Duplicate {
                 binding,
                 body,
                 expression,
             } => {
-                if !body.is_at_level(1, 0, 0) {
+                if !body.n_boxes(1) {
                     return Err(StratificationError::DupNonUnitBoxMultiplicity {
                         name: binding.clone(),
                         term: self.clone(),
@@ -149,21 +127,17 @@ impl Term {
                     return Err(StratificationError::UndefinedReference { name: name.clone() });
                 }
             }
-            Symbol(_) | Universe => {}
+            Variable(_) => {}
+            _ => todo!("handle typed terms"),
         }
 
         Ok(())
     }
 
-    pub fn stratified<T: Definitions>(
+    pub fn stratified<U: Definitions>(
         self,
-        definitions: &T,
-    ) -> Result<Stratified<'_, T>, StratificationError> {
-        println!("normed: {:?}", {
-            let mut item = self.clone();
-            item.normalize(definitions).unwrap();
-            item
-        });
+        definitions: &U,
+    ) -> Result<Stratified<'_, U>, StratificationError> {
         self.is_stratified(definitions)?;
         Ok(Stratified(self, definitions))
     }
