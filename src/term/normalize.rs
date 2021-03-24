@@ -30,8 +30,21 @@ impl Term {
                 expression.shift(replaced);
                 body.shift(replaced.child());
             }
-            Reference(_) => {}
-            _ => todo!("handle typed terms"),
+            Reference(_) | Universe => {}
+
+            Wrap(term) => term.shift(replaced),
+            Annotation { expression, ty, .. } => {
+                expression.shift(replaced);
+                ty.shift(replaced);
+            }
+            Function {
+                argument_type,
+                return_type,
+                ..
+            } => {
+                argument_type.shift(replaced);
+                return_type.shift(replaced.child().child());
+            }
         }
     }
 
@@ -72,8 +85,24 @@ impl Term {
                 expression.substitute(variable, term);
                 body.substitute_shifted(variable, term);
             }
-            Reference(_) => {}
-            _ => todo!("handle typed terms"),
+            Reference(_) | Universe => {}
+
+            Wrap(expr) => expr.substitute(variable, term),
+            Annotation { expression, ty, .. } => {
+                expression.substitute(variable, term);
+                ty.substitute(variable, term);
+            }
+            Function {
+                argument_type,
+                return_type,
+                ..
+            } => {
+                argument_type.substitute(variable, term);
+                let mut term = term.clone();
+                term.shift_top();
+                term.shift_top();
+                return_type.substitute(variable.child().child(), &term);
+            }
         }
     }
 
@@ -176,7 +205,23 @@ impl Term {
                 }
             }
             Variable(_) => {}
-            _ => todo!("handle typed terms"),
+
+            Universe => {}
+            Wrap(term) => {
+                term.normalize(definitions)?;
+            }
+            Annotation { expression, ty, .. } => {
+                expression.normalize(definitions)?;
+                ty.normalize(definitions)?;
+            }
+            Function {
+                argument_type,
+                return_type,
+                ..
+            } => {
+                argument_type.normalize(definitions)?;
+                return_type.normalize(definitions)?;
+            }
         }
 
         Ok(())

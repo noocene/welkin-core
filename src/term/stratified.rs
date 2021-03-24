@@ -33,7 +33,7 @@ impl Term {
                         0
                     }
                 }
-                Reference(_) => 0,
+                Reference(_) | Universe => 0,
                 Lambda { body, .. } => uses_helper(body, variable.child()),
                 Apply { function, argument } => {
                     uses_helper(function, variable) + uses_helper(argument, variable)
@@ -42,7 +42,19 @@ impl Term {
                 Duplicate {
                     expression, body, ..
                 } => uses_helper(expression, variable) + uses_helper(body, variable.child()),
-                _ => todo!("handle typed terms"),
+
+                Wrap(term) => uses_helper(term, variable),
+                Annotation { expression, ty, .. } => {
+                    uses_helper(expression, variable) + uses_helper(ty, variable)
+                }
+                Function {
+                    argument_type,
+                    return_type,
+                    ..
+                } => {
+                    uses_helper(argument_type, variable)
+                        + uses_helper(return_type, variable.child().child())
+                }
             }
         }
 
@@ -59,7 +71,7 @@ impl Term {
             current_nestings: usize,
         ) -> bool {
             match this {
-                Reference(_) => true,
+                Reference(_) | Universe => true,
                 Variable(index) => *index != variable || nestings == current_nestings,
                 Lambda { body, .. } => {
                     n_boxes_helper(body, variable.child(), nestings, current_nestings)
@@ -75,7 +87,25 @@ impl Term {
                     n_boxes_helper(expression, variable, nestings, current_nestings)
                         && n_boxes_helper(body, variable.child(), nestings, current_nestings)
                 }
-                _ => todo!("handle typed terms"),
+
+                Wrap(term) => n_boxes_helper(term, variable, nestings, current_nestings),
+                Annotation { expression, ty, .. } => {
+                    n_boxes_helper(expression, variable, nestings, current_nestings)
+                        && n_boxes_helper(ty, variable, nestings, current_nestings)
+                }
+                Function {
+                    argument_type,
+                    return_type,
+                    ..
+                } => {
+                    n_boxes_helper(argument_type, variable, nestings, current_nestings)
+                        && n_boxes_helper(
+                            return_type,
+                            variable.child().child(),
+                            nestings,
+                            current_nestings,
+                        )
+                }
             }
         }
 
@@ -129,8 +159,21 @@ impl Term {
                     return Err(StratificationError::UndefinedReference { name: name.clone() });
                 }
             }
-            Variable(_) => {}
-            _ => todo!("handle typed terms"),
+            Variable(_) | Universe => {}
+
+            Wrap(term) => term.is_stratified(definitions)?,
+            Annotation { expression, ty, .. } => {
+                expression.is_stratified(definitions)?;
+                ty.is_stratified(definitions)?;
+            }
+            Function {
+                argument_type,
+                return_type,
+                ..
+            } => {
+                argument_type.is_stratified(definitions)?;
+                return_type.is_stratified(definitions)?;
+            }
         }
 
         Ok(())

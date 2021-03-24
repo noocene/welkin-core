@@ -152,12 +152,13 @@ parser! {
         (
             maybe_name().skip(token(',')),
             maybe_name().skip(token(':')),
+            term(ctx.clone()).map(Box::new),
         )
         .then({
             let mut ctx = ctx.clone();
-            move |(self_binding, argument_binding)| {
+            move |(self_binding, argument_binding, argument_type)| {
                 let ctx = ctx.with(self_binding.clone()).with(argument_binding.clone());
-                (value(self_binding), value(argument_binding), term(ctx.clone()).map(Box::new), term(ctx).map(Box::new))
+                (value(self_binding), value(argument_binding), value(argument_type), term(ctx).map(Box::new))
             }
         })
         .map(|(self_binding, argument_binding, argument_type, return_type)| {
