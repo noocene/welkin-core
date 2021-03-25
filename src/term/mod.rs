@@ -1,3 +1,4 @@
+mod eq;
 mod index;
 mod normalize;
 mod parse;
@@ -13,7 +14,7 @@ pub use stratified::{StratificationError, Stratified};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Index(pub(crate) usize);
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub enum Term {
     // Untyped language
     Variable(Index),

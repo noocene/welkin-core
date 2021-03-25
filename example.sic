@@ -1,12 +1,14 @@
 Void : * = +void,prop: +,:Void * (prop void)
 
-Unit : * = +unit,prop: +,:Unit * +,:(prop \prop \x x) (prop unit)
+Unit : * = +unit,prop: +,:Unit * +,:(prop new) (prop unit)
+
+new : Unit = \prop \x x
 
 Bool : * =
-   +self, prop: +,:Bool *
+   +bool, prop: +,:Bool *
         +,:(prop true)
         +,:(prop false)
-        (prop self)
+        (prop bool)
 
 true : Bool =
     \prop \t \f t
@@ -16,4 +18,16 @@ false : Bool =
 
 not : +,:Bool Bool = \x ((x \self Bool) false true)
 
-main : Bool = (not false)
+Nat : * =
+    +nat, prop: +,:Nat *
+    +,:(prop zero)
+    +,:
+        +,pred:Nat 
+            (prop (succ pred))
+    (prop nat)
+
+zero : Nat = \prop \z \s z
+
+succ : +,:Nat Nat = \n \prop \z \s (s n)
+
+main : Bool = false
