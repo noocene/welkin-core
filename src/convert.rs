@@ -59,6 +59,7 @@ fn build_net<T: Storage + Clone + Eq, U: Definitions>(
             net.connect(apply.left, argument);
             apply.right
         }
+        Annotation { expression, .. } => build_net(expression, net, level, definitions, var_ptrs),
         _ => panic!("cannot translate typed net!"),
     }
 }

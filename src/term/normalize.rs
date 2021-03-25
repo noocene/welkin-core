@@ -1,3 +1,5 @@
+use std::mem::replace;
+
 use super::{Definitions, Index, Term};
 
 #[derive(Debug)]
@@ -7,7 +9,7 @@ pub enum NormalizationError {
 }
 
 impl Term {
-    fn shift(&mut self, replaced: Index) {
+    pub(crate) fn shift(&mut self, replaced: Index) {
         use Term::*;
 
         match self {
@@ -48,17 +50,17 @@ impl Term {
         }
     }
 
-    fn shift_top(&mut self) {
+    pub(crate) fn shift_top(&mut self) {
         self.shift(Index::top())
     }
 
-    fn substitute_shifted(&mut self, variable: Index, term: &Term) {
+    pub(crate) fn substitute_shifted(&mut self, variable: Index, term: &Term) {
         let mut term = term.clone();
         term.shift_top();
         self.substitute(variable.child(), &term)
     }
 
-    fn substitute(&mut self, variable: Index, term: &Term) {
+    pub(crate) fn substitute(&mut self, variable: Index, term: &Term) {
         use Term::*;
 
         match self {
@@ -98,6 +100,7 @@ impl Term {
                 ..
             } => {
                 argument_type.substitute(variable, term);
+
                 let mut term = term.clone();
                 term.shift_top();
                 term.shift_top();
@@ -106,7 +109,7 @@ impl Term {
         }
     }
 
-    fn substitute_top(&mut self, term: &Term) {
+    pub(crate) fn substitute_top(&mut self, term: &Term) {
         self.substitute(Index::top(), term)
     }
 
@@ -210,9 +213,9 @@ impl Term {
             Wrap(term) => {
                 term.normalize(definitions)?;
             }
-            Annotation { expression, ty, .. } => {
+            Annotation { expression, .. } => {
                 expression.normalize(definitions)?;
-                ty.normalize(definitions)?;
+                *self = replace(expression, Term::Universe);
             }
             Function {
                 argument_type,
@@ -221,6 +224,112 @@ impl Term {
             } => {
                 argument_type.normalize(definitions)?;
                 return_type.normalize(definitions)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn lazy_normalize<U: Definitions>(
+        &mut self,
+        definitions: &U,
+    ) -> Result<(), NormalizationError> {
+        use Term::*;
+
+        match self {
+            Reference(binding) => {
+                if let Some(term) = definitions.get(binding).map(|term| {
+                    let mut term = term.clone();
+                    term.lazy_normalize(definitions)?;
+                    Ok(term)
+                }) {
+                    *self = term?;
+                }
+            }
+            Put(term) => {
+                term.lazy_normalize(definitions)?;
+            }
+            Duplicate {
+                body,
+                expression,
+                binding,
+            } => {
+                expression.lazy_normalize(definitions)?;
+                match &**expression {
+                    Put(expression) => {
+                        body.substitute_top(expression);
+                        body.lazy_normalize(definitions)?;
+                        *self = *body.clone();
+                    }
+                    Duplicate {
+                        binding: new_binding,
+                        expression,
+                        body: new_body,
+                    } => {
+                        body.shift(Index::top().child());
+                        let binding = binding.clone();
+                        let dup = Duplicate {
+                            body: body.clone(),
+                            expression: new_body.clone(),
+                            binding,
+                        };
+                        let mut term = Duplicate {
+                            binding: new_binding.clone(),
+                            expression: expression.clone(),
+                            body: Box::new(dup),
+                        };
+                        term.lazy_normalize(definitions)?;
+                        *self = term;
+                    }
+                    Lambda { .. } => Err(NormalizationError::InvalidDuplication)?,
+                    _ => {
+                        body.lazy_normalize(definitions)?;
+                    }
+                }
+            }
+            Apply { function, argument } => {
+                function.lazy_normalize(definitions)?;
+                let function = function.clone();
+                match *function {
+                    Put(_) => Err(NormalizationError::InvalidApplication)?,
+                    Duplicate {
+                        body,
+                        expression,
+                        binding,
+                    } => {
+                        let mut argument = argument.clone();
+                        argument.shift_top();
+                        let body = Box::new(Apply {
+                            function: body,
+                            argument,
+                        });
+                        let mut term = Duplicate {
+                            binding,
+                            expression,
+                            body,
+                        };
+                        term.lazy_normalize(definitions)?;
+                        *self = term;
+                    }
+                    Lambda { mut body, .. } => {
+                        body.substitute_top(argument);
+                        body.lazy_normalize(definitions)?;
+                        *self = *body;
+                    }
+                    _ => {
+                        argument.lazy_normalize(definitions)?;
+                    }
+                }
+            }
+            Variable(_) | Lambda { .. } => {}
+
+            Universe | Function { .. } => {}
+            Wrap(term) => {
+                term.lazy_normalize(definitions)?;
+            }
+            Annotation { expression, .. } => {
+                expression.lazy_normalize(definitions)?;
+                *self = replace(expression, Term::Universe);
             }
         }
 

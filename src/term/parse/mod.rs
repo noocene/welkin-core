@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc, str::FromStr};
+use std::{rc::Rc, str::FromStr};
 
 pub mod typed;
 pub mod untyped;
@@ -95,7 +95,7 @@ parser! {
                 term(ctx.clone()).map(Box::new),
                 value(ctx.clone())
             )
-        }).then(|(binding, b, mut ctx): (String, _, _)| {
+        }).then(|(binding, b, ctx): (String, _, _)| {
             (value(binding.clone()), value(b), term(ctx.with(binding)).map(Box::new))
         }).map(|(binding, expression, body)| Term::Duplicate {
             binding,
@@ -122,17 +122,18 @@ parser! {
 #[derive(Debug)]
 pub struct InUse;
 
-#[derive(Clone, Default)]
-pub struct Context(Rc<RefCell<Vec<String>>>);
+#[derive(Clone, Default, Debug)]
+pub struct Context(Rc<Vec<String>>);
 
 impl Context {
-    pub(crate) fn with(&mut self, name: String) -> Self {
-        self.0.borrow_mut().push(name);
-        self.clone()
+    pub(crate) fn with(&self, name: String) -> Self {
+        let mut data = (*self.0).clone();
+        data.push(name);
+        Context(Rc::new(data))
     }
 
-    fn resolve(&self, name: &str) -> Option<Index> {
-        for (idx, binding) in self.0.borrow().iter().rev().enumerate() {
+    pub(crate) fn resolve(&self, name: &str) -> Option<Index> {
+        for (idx, binding) in self.0.iter().rev().enumerate() {
             if name == binding {
                 return Some(Index(idx));
             }
@@ -141,7 +142,7 @@ impl Context {
     }
 
     pub(crate) fn lookup(&self, symbol: Index) -> Option<String> {
-        self.0.borrow().iter().rev().nth(symbol.0).cloned()
+        self.0.iter().rev().nth(symbol.0).cloned()
     }
 }
 
@@ -155,14 +156,13 @@ parser! {
             term(ctx.clone()).map(Box::new),
         )
         .then({
-            let mut ctx = ctx.clone();
+            let ctx = ctx.clone();
             move |(self_binding, argument_binding, argument_type)| {
                 let ctx = ctx.with(self_binding.clone()).with(argument_binding.clone());
                 (value(self_binding), value(argument_binding), value(argument_type), term(ctx).map(Box::new))
             }
         })
         .map(|(self_binding, argument_binding, argument_type, return_type)| {
-            println!("{}", self_binding);
             Term::Function {
                 self_binding,
                 argument_binding,

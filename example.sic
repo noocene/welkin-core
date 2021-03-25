@@ -1,18 +1,19 @@
-true = \t \f
-    t
+Void : * = +void,prop: +,:Void * (prop void)
 
-false = \t \f
-    f
+Unit : * = +unit,prop: +,:Unit * +,:(prop \prop \x x) (prop unit)
 
-not = \b \t \f
-    (b f t)
+Bool : * =
+   +self, prop: +,:Bool *
+        +,:(prop true)
+        +,:(prop false)
+        (prop self)
 
-dup = \x
-    : X = x
-    . \a (X (X a))
+true : Bool =
+    \prop \t \f t
 
-main =
-    : Not = (dup .not)
-    : Id = (dup .Not)
-    : Idd = (dup .Id)
-    . (Idd false)
+false : Bool =
+    \prop \t \f f
+
+not : +,:Bool Bool = \x ((x \self Bool) false true)
+
+main : Bool = (not false)

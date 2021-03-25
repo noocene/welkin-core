@@ -5,13 +5,15 @@ mod show;
 mod stratified;
 use std::collections::HashMap;
 
+pub use normalize::NormalizationError;
+pub(crate) use parse::Context;
 pub use parse::{typed, untyped};
 pub use stratified::{StratificationError, Stratified};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Index(pub(crate) usize);
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Term {
     // Untyped language
     Variable(Index),
@@ -55,7 +57,8 @@ mod sealed {
     pub trait SealedDefinitions {}
 
     impl SealedDefinitions for HashMap<String, Term> {}
-    impl SealedDefinitions for HashMap<String, (Term, Term)> {}
+
+    impl<T: crate::analysis::sealed::SealedDefinitions> SealedDefinitions for T {}
 }
 
 pub trait Definitions: sealed::SealedDefinitions {
@@ -65,11 +68,5 @@ pub trait Definitions: sealed::SealedDefinitions {
 impl Definitions for HashMap<String, Term> {
     fn get(&self, name: &str) -> Option<&Term> {
         HashMap::get(self, name)
-    }
-}
-
-impl Definitions for HashMap<String, (Term, Term)> {
-    fn get(&self, name: &str) -> Option<&Term> {
-        HashMap::get(self, name).map(|(_, b)| b)
     }
 }
