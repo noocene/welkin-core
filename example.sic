@@ -30,4 +30,18 @@ zero : Nat = \prop \z \s z
 
 succ : +,:Nat Nat = \n \prop \z \s (s n)
 
-main : Bool = false
+List : +,:* * = \A
+    +list, prop: +,:(List A) *
+    +,:(prop (nil A))
+    +,:
+        +,head:A
+        +,tail:(List A)
+        (prop (cons A head tail))
+    (prop list)
+
+nil : +,A:* (List A) = \A \prop \nil \cons nil
+
+cons : +,A:* +,head:A +,tail:(List A) (List A) = \A \head \tail \prop
+    \nil \cons (cons head tail)
+
+main : (List Nat) = (cons Nat zero (nil Nat))

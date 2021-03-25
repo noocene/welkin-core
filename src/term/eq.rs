@@ -81,6 +81,20 @@ impl PartialEq for Term {
                         ..
                     },
                 ) => eq_helper(expression_a, expression_b, index),
+                (
+                    Annotation {
+                        expression: expression_a,
+                        ..
+                    },
+                    expression_b,
+                ) => eq_helper(expression_a, expression_b, index),
+                (
+                    expression_a,
+                    Annotation {
+                        expression: expression_b,
+                        ..
+                    },
+                ) => eq_helper(expression_a, expression_b, index),
                 (Wrap(a), Wrap(b)) => eq_helper(a, b, index),
 
                 _ => false,

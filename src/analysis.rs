@@ -118,7 +118,7 @@ impl Term {
                 inferred.lazy_normalize(definitions)?;
                 if inferred != reduced {
                     Err(CheckError::TypeError {
-                        expected: ty.clone(),
+                        expected: reduced.clone(),
                         got: inferred,
                     })?;
                 }
