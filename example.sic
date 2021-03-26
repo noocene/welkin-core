@@ -49,4 +49,4 @@ typeif : _,A:* _,B:* +,a:Bool * = /A /B \a
 if : _,A:* _,B:* +,bool:Bool +,:A +,:B ([typeif A B] bool) = /A /B \bool \a \b 
     ([bool \self ([typeif A B] self)] a b)
 
-main : Bool = ([if Bool Nat] true (not true) zero)
+main : Nat = ([if Bool Nat] false (not true) (succ zero))

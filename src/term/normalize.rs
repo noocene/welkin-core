@@ -136,6 +136,7 @@ impl Term {
             Lambda { body, erased, .. } => {
                 body.normalize(definitions)?;
                 if *erased {
+                    body.substitute_top(&Term::Variable(Index::top()));
                     *self = replace(&mut *body, Universe);
                 }
             }
