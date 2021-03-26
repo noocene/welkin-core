@@ -201,15 +201,26 @@ impl Term {
                 return_type.check_inner(&Universe, definitions, &ret_ctx)?;
                 Universe
             }
-            Apply { function, argument } => {
+            Apply {
+                function,
+                argument,
+                erased,
+            } => {
                 let mut function_type = function.infer_inner(definitions, ctx)?;
                 function_type.lazy_normalize(definitions)?;
                 if let Function {
                     argument_type,
                     return_type,
+                    erased: function_erased,
                     ..
                 } = &function_type
                 {
+                    if erased != function_erased {
+                        Err(CheckError::ErasureMismatch {
+                            lambda: self.clone(),
+                            ty: function_type.clone(),
+                        })?;
+                    }
                     let mut self_annotation = Term::Annotation {
                         expression: function.clone(),
                         ty: Box::new(function_type.clone()),

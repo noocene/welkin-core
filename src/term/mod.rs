@@ -26,6 +26,7 @@ pub enum Term {
     Apply {
         function: Box<Term>,
         argument: Box<Term>,
+        erased: bool,
     },
     Put(Box<Term>),
     Duplicate {

@@ -20,14 +20,17 @@ impl PartialEq for Term {
                     Apply {
                         function: a_function,
                         argument: a_argument,
+                        erased: a_erased,
                     },
                     Apply {
                         function: b_function,
+                        erased: b_erased,
                         argument: b_argument,
                     },
                 ) => {
                     eq_helper(a_function, b_function, index)
                         && eq_helper(a_argument, b_argument, index)
+                        && a_erased == b_erased
                 }
                 (Put(a), Put(b)) => eq_helper(a, b, index),
                 (

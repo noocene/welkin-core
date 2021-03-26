@@ -16,7 +16,7 @@ true : Bool =
 false : Bool =
     /prop \t \f f
 
-not : +,:Bool Bool = \x ((x \self Bool) false true)
+not : +,:Bool Bool = \x ([x \self Bool] false true)
 
 Nat : * =
     _nat, prop: +,:Nat *
@@ -31,22 +31,22 @@ zero : Nat = /prop \z \s z
 succ : +,:Nat Nat = \n /prop \z \s (s n)
 
 List : _,:* * = /A
-    _list, prop: +,:(List A) *
-    +,:(prop (nil A))
+    _list, prop: +,:[List A] *
+    +,:(prop [nil A])
     +,:
         +,head:A
-        +,tail:(List A)
-        (prop (cons A head tail))
+        +,tail:[List A]
+        (prop ([cons A] head tail))
     (prop list)
 
-nil : _,A:* (List A) = /A /prop \nil \cons nil
+nil : _,A:* [List A] = /A /prop \nil \cons nil
 
-cons : _,A:* +,head:A +,tail:(List A) (List A) = /A \head \tail /prop
+cons : _,A:* +,head:A +,tail:[List A] [List A] = /A \head \tail /prop
     \nil \cons (cons head tail)
 
 typeif : _,A:* _,B:* +,a:Bool * = /A /B \a
-    ((a \x *) A B)
-if : _,A:* _,B:* +,bool:Bool +,:A +,:B (typeif A B bool) = /A /B \bool \a \b 
-    ((bool \self (typeif A B self)) a b)
+    ([a \x *] A B)
+if : _,A:* _,B:* +,bool:Bool +,:A +,:B ([typeif A B] bool) = /A /B \bool \a \b 
+    ([bool \self ([typeif A B] self)] a b)
 
-main : Unit = (if Unit Nat true new zero)
+main : Bool = ([if Bool Nat] true (not true) zero)

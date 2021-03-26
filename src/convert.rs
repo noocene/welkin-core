@@ -12,6 +12,57 @@ pub enum NetError {
 }
 
 impl Term {
+    // fn erase(&mut self) {
+    //     use Term::*;
+
+    //     match self {
+    //         Variable(_) | Universe | Reference(_) => {}
+    //         Function {
+    //             argument_type,
+    //             return_type,
+    //             ..
+    //         } => {
+    //             argument_type.erase();
+    //             return_type.erase();
+    //         }
+    //         Lambda { body, .. } => {
+    //             body.erase();
+    //         }
+    //         Apply {
+    //             function,
+    //             argument,
+    //             erased,
+    //         } => {
+    //             println!("FUN: {:?}", function);
+    //             match &mut **function {
+    //                 Lambda { erased, body, .. } => {
+    //                     println!("{:?}", erased);
+    //                     if *erased {
+    //                         *self = replace(body, Universe);
+    //                     }
+    //                 }
+    //                 _ => {
+    //                     function.erase();
+    //                     argument.erase();
+    //                 }
+    //             }
+    //         }
+    //         Duplicate {
+    //             expression, body, ..
+    //         } => {
+    //             expression.erase();
+    //             body.erase();
+    //         }
+    //         Put(data) | Wrap(data) => {
+    //             data.erase();
+    //         }
+    //         Term::Annotation { expression, .. } => {
+    //             expression.erase();
+    //             *self = replace(expression, Universe);
+    //         }
+    //     }
+    // }
+
     fn build_net<T: Storage + Clone + Eq, U: Definitions>(
         &self,
         net: &mut Net<T>,
@@ -40,13 +91,17 @@ impl Term {
                     .unwrap()
                     .build_net(net, definitions, var_ptrs)?
             }
-            Lambda { body, .. } => {
-                let lambda = net.add(AgentType::Delta).ports();
-                var_ptrs.push(lambda.left.clone());
-                let body = body.build_net(net, definitions, var_ptrs)?;
-                var_ptrs.pop();
-                net.connect(lambda.right, body);
-                lambda.principal
+            Lambda { body, erased, .. } => {
+                if *erased {
+                    body.build_net(net, definitions, var_ptrs)?
+                } else {
+                    let lambda = net.add(AgentType::Delta).ports();
+                    var_ptrs.push(lambda.left.clone());
+                    let body = body.build_net(net, definitions, var_ptrs)?;
+                    var_ptrs.pop();
+                    net.connect(lambda.right, body);
+                    lambda.principal
+                }
             }
             Duplicate {
                 body, expression, ..
@@ -57,13 +112,22 @@ impl Term {
                 var_ptrs.pop();
                 body
             }
-            Apply { function, argument } => {
-                let apply = net.add(AgentType::Delta).ports();
-                let function = function.build_net(net, definitions, var_ptrs)?;
-                net.connect(apply.principal, function);
-                let argument = argument.build_net(net, definitions, var_ptrs)?;
-                net.connect(apply.left, argument);
-                apply.right
+            Apply {
+                function,
+                argument,
+                erased,
+                ..
+            } => {
+                if *erased {
+                    function.build_net(net, definitions, var_ptrs)?
+                } else {
+                    let apply = net.add(AgentType::Delta).ports();
+                    let function = function.build_net(net, definitions, var_ptrs)?;
+                    net.connect(apply.principal, function);
+                    let argument = argument.build_net(net, definitions, var_ptrs)?;
+                    net.connect(apply.left, argument);
+                    apply.right
+                }
             }
             Annotation { expression, .. } => expression.build_net(net, definitions, var_ptrs)?,
             _ => Err(NetError::TypedTerm { term: self.clone() })?,

@@ -34,15 +34,18 @@ impl Term {
                     }
                 }
                 Reference(_) | Function { .. } | Universe => 0,
-                Lambda { body, erased, .. } => {
-                    if !erased {
-                        uses_helper(body, variable.child())
-                    } else {
-                        0
-                    }
-                }
-                Apply { function, argument } => {
-                    uses_helper(function, variable) + uses_helper(argument, variable)
+                Lambda { body, .. } => uses_helper(body, variable.child()),
+                Apply {
+                    function,
+                    argument,
+                    erased,
+                } => {
+                    uses_helper(function, variable)
+                        + if *erased {
+                            0
+                        } else {
+                            uses_helper(argument, variable)
+                        }
                 }
                 Put(term) => uses_helper(term, variable),
                 Duplicate {
@@ -71,16 +74,17 @@ impl Term {
             match this {
                 Reference(_) | Universe | Function { .. } => true,
                 Variable(index) => *index != variable || nestings == current_nestings,
-                Lambda { body, erased, .. } => {
-                    if !erased {
-                        n_boxes_helper(body, variable.child(), nestings, current_nestings)
-                    } else {
-                        true
-                    }
+                Lambda { body, .. } => {
+                    n_boxes_helper(body, variable.child(), nestings, current_nestings)
                 }
-                Apply { function, argument } => {
+                Apply {
+                    function,
+                    argument,
+                    erased,
+                } => {
                     n_boxes_helper(function, variable, nestings, current_nestings)
-                        && n_boxes_helper(argument, variable, nestings, current_nestings)
+                        && (*erased
+                            || n_boxes_helper(argument, variable, nestings, current_nestings))
                 }
                 Put(term) => n_boxes_helper(term, variable, nestings, current_nestings + 1),
                 Duplicate {
@@ -104,28 +108,25 @@ impl Term {
         use Term::*;
 
         match &self {
-            Lambda {
-                body,
-                binding,
-                erased,
-            } => {
-                if !erased {
-                    if body.uses() > 1 {
-                        return Err(StratificationError::AffineReused {
-                            name: binding.clone(),
-                            term: self.clone(),
-                        });
-                    }
-                    if !body.is_boxed_n_times(0) {
-                        return Err(StratificationError::AffineUsedInBox {
-                            name: binding.clone(),
-                            term: self.clone(),
-                        });
-                    }
+            Lambda { body, binding, .. } => {
+                if body.uses() > 1 {
+                    return Err(StratificationError::AffineReused {
+                        name: binding.clone(),
+                        term: self.clone(),
+                    });
                 }
+                if !body.is_boxed_n_times(0) {
+                    return Err(StratificationError::AffineUsedInBox {
+                        name: binding.clone(),
+                        term: self.clone(),
+                    });
+                }
+
                 body.is_stratified(definitions)?;
             }
-            Apply { function, argument } => {
+            Apply {
+                function, argument, ..
+            } => {
                 function.is_stratified(definitions)?;
                 argument.is_stratified(definitions)?;
             }

@@ -287,6 +287,20 @@ impl<T: Storage + Clone> Net<T> {
         } else {
             use Slot::*;
 
+            if x_ty == Epsilon || y_ty == Epsilon {
+                let (x, y) = if x_ty == Epsilon { (x, y) } else { (y, x) };
+                let p = self.add(Epsilon).ports().principal.address();
+                let q = self.add(Epsilon).ports().principal.address();
+
+                self.connect(Port::new(p, Principal), self.follow(Port::new(y, Left)));
+                self.connect(Port::new(q, Principal), self.follow(Port::new(y, Right)));
+
+                self.free(x);
+                self.free(y);
+
+                return;
+            }
+
             let p = self.add(y_ty).ports().principal.address();
             let q = self.add(y_ty).ports().principal.address();
             let r = self.add(x_ty).ports().principal.address();

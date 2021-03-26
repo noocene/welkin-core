@@ -19,7 +19,9 @@ impl Term {
                 }
             }
             Lambda { body, .. } => body.shift(replaced.child()),
-            Apply { function, argument } => {
+            Apply {
+                function, argument, ..
+            } => {
                 function.shift(replaced);
                 argument.shift(replaced);
             }
@@ -74,7 +76,9 @@ impl Term {
             Lambda { body, .. } => {
                 body.substitute_shifted(variable, term);
             }
-            Apply { function, argument } => {
+            Apply {
+                function, argument, ..
+            } => {
                 function.substitute(variable, term);
                 argument.substitute(variable, term);
             }
@@ -129,8 +133,11 @@ impl Term {
                     *self = term?;
                 }
             }
-            Lambda { body, .. } => {
+            Lambda { body, erased, .. } => {
                 body.normalize(definitions)?;
+                if *erased {
+                    *self = replace(&mut *body, Universe);
+                }
             }
             Put(term) => {
                 term.normalize(definitions)?;
@@ -173,38 +180,47 @@ impl Term {
                     }
                 }
             }
-            Apply { function, argument } => {
+            Apply {
+                function,
+                argument,
+                erased,
+            } => {
                 function.normalize(definitions)?;
                 let function = function.clone();
-                match *function {
-                    Put(_) => Err(NormalizationError::InvalidApplication)?,
-                    Duplicate {
-                        body,
-                        expression,
-                        binding,
-                    } => {
-                        let mut argument = argument.clone();
-                        argument.shift_top();
-                        let body = Box::new(Apply {
-                            function: body,
-                            argument,
-                        });
-                        let mut term = Duplicate {
-                            binding,
-                            expression,
+                if *erased {
+                    *self = *function;
+                } else {
+                    match *function {
+                        Put(_) => Err(NormalizationError::InvalidApplication)?,
+                        Duplicate {
                             body,
-                        };
-                        term.normalize(definitions)?;
-                        *self = term;
-                    }
-                    Lambda { mut body, .. } => {
-                        body.substitute_top(argument);
-                        body.normalize(definitions)?;
+                            expression,
+                            binding,
+                        } => {
+                            let mut argument = argument.clone();
+                            argument.shift_top();
+                            let body = Box::new(Apply {
+                                function: body,
+                                argument,
+                                erased: *erased,
+                            });
+                            let mut term = Duplicate {
+                                binding,
+                                expression,
+                                body,
+                            };
+                            term.normalize(definitions)?;
+                            *self = term;
+                        }
+                        Lambda { mut body, .. } => {
+                            body.substitute_top(argument);
+                            body.normalize(definitions)?;
 
-                        *self = *body;
-                    }
-                    _ => {
-                        argument.normalize(definitions)?;
+                            *self = *body;
+                        }
+                        _ => {
+                            argument.normalize(definitions)?;
+                        }
                     }
                 }
             }
@@ -291,7 +307,11 @@ impl Term {
                     }
                 }
             }
-            Apply { function, argument } => {
+            Apply {
+                function,
+                argument,
+                erased,
+            } => {
                 function.lazy_normalize(definitions)?;
                 let function = function.clone();
                 match *function {
@@ -306,6 +326,7 @@ impl Term {
                         let body = Box::new(Apply {
                             function: body,
                             argument,
+                            erased: *erased,
                         });
                         let mut term = Duplicate {
                             binding,

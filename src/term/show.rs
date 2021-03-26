@@ -19,11 +19,15 @@ impl Term {
                 erased,
             } => write!(f, "{}{} ", if *erased { "/" } else { "\\" }, binding)
                 .and_then(|_| body.write(f, &mut ctx.with(binding.clone()))),
-            Apply { function, argument } => write!(f, "(")
+            Apply {
+                function,
+                argument,
+                erased,
+            } => write!(f, "{}", if *erased { "[" } else { "(" })
                 .and_then(|_| function.write(f, ctx))
                 .and_then(|_| write!(f, " "))
                 .and_then(|_| argument.write(f, ctx))
-                .and_then(|_| write!(f, ")")),
+                .and_then(move |_| write!(f, "{}", if *erased { "]" } else { ")" })),
             Put(term) => write!(f, ". ").and_then(|_| term.write(f, ctx)),
             Reference(name) => write!(f, "{}", name),
             Duplicate {

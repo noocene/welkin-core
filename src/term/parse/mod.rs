@@ -37,23 +37,26 @@ parser! {
         where [Input: Stream<Token = char>]
     {
         let erased = *erased;
-        name().then(|name| (value(name.clone()), term(ctx.with(name)).map(Box::new))).map(move |(binding, body)| Term::Lambda { binding, body, erased })
+        name().then(|name| (value(name.clone()), term(ctx.with(name)).map(Box::new))).map(move |(binding, body)| Term::Lambda { erased, binding, body })
     }
 }
 
 parser! {
-    fn apply[Input](ctx: Context)(Input) -> Term
+    fn apply[Input](erased: bool, ctx: Context)(Input) -> Term
         where [Input: Stream<Token = char>]
     {
-        (term(ctx.clone()).map(Box::new), many1(term(ctx.clone()))).map(|(function, arguments): (_, Vec<_>)| {
+        let erased = *erased;
+        (term(ctx.clone()).map(Box::new), many1(term(ctx.clone()))).map(move |(function, arguments): (_, Vec<_>)| {
             let mut arguments = arguments.into_iter();
             let mut term = Term::Apply {
                 function,
+                erased,
                 argument: Box::new(arguments.next().unwrap()),
             };
             while let Some(argument) = arguments.next() {
                 term = Term::Apply {
                     function: Box::new(term),
+                    erased,
                     argument: Box::new(argument),
                 };
             }
@@ -183,7 +186,8 @@ where
 {
     let parser = token('\\').with(lambda(false, ctx.clone()));
     let parser = parser.or(token('/').with(lambda(true, ctx.clone())));
-    let parser = parser.or(token('(').with(apply(ctx.clone())).skip(token(')')));
+    let parser = parser.or(token('(').with(apply(false, ctx.clone())).skip(token(')')));
+    let parser = parser.or(token('[').with(apply(true, ctx.clone())).skip(token(']')));
     let parser = parser.or(token('{').with(annotation(ctx.clone())).skip(token('}')));
     let parser = parser.or(token('.').with(_box(ctx.clone())));
     let parser = parser.or(token(':').with(duplicate(ctx.clone())));
