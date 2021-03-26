@@ -102,7 +102,7 @@ impl Term {
                         })?;
                     }
                     let ctx = ctx.with(binding.clone());
-                    let self_annotation = Term::Annotation {
+                    let mut self_annotation = Term::Annotation {
                         checked: true,
                         expression: Box::new(self.clone()),
                         ty: Box::new(ty.clone()),
@@ -112,6 +112,7 @@ impl Term {
                         ty: argument_type,
                         expression: Box::new(Term::Variable(ctx.resolve(&binding).unwrap())),
                     };
+                    self_annotation.shift_top();
                     return_type.substitute(Index::top().child(), &self_annotation);
                     return_type.substitute_top(&argument_annotation);
                     let mut body = body.clone();
@@ -174,7 +175,7 @@ impl Term {
                 let mut ret_ctx = ctx.with(self_binding.clone());
                 ret_ctx = ret_ctx.with(argument_binding.clone());
 
-                let self_annotation = Term::Annotation {
+                let mut self_annotation = Term::Annotation {
                     checked: true,
                     expression: Box::new(Term::Variable(
                         ret_ctx.resolve(self_binding).ok_or_else(|| {
@@ -194,6 +195,7 @@ impl Term {
                 };
                 argument_type.check_inner(&Universe, definitions, ctx)?;
                 let mut return_type = return_type.clone();
+                self_annotation.shift_top();
                 return_type.substitute(Index::top().child(), &self_annotation);
                 return_type.substitute_top(&argument_annotation);
                 return_type.check_inner(&Universe, definitions, &ret_ctx)?;
