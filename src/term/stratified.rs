@@ -33,8 +33,14 @@ impl Term {
                         0
                     }
                 }
-                Reference(_) | Universe => 0,
-                Lambda { body, .. } => uses_helper(body, variable.child()),
+                Reference(_) | Function { .. } | Universe => 0,
+                Lambda { body, erased, .. } => {
+                    if !erased {
+                        uses_helper(body, variable.child())
+                    } else {
+                        0
+                    }
+                }
                 Apply { function, argument } => {
                     uses_helper(function, variable) + uses_helper(argument, variable)
                 }
@@ -46,14 +52,6 @@ impl Term {
                 Wrap(term) => uses_helper(term, variable),
                 Annotation { expression, ty, .. } => {
                     uses_helper(expression, variable) + uses_helper(ty, variable)
-                }
-                Function {
-                    argument_type,
-                    return_type,
-                    ..
-                } => {
-                    uses_helper(argument_type, variable)
-                        + uses_helper(return_type, variable.child().child())
                 }
             }
         }
@@ -71,10 +69,14 @@ impl Term {
             current_nestings: usize,
         ) -> bool {
             match this {
-                Reference(_) | Universe => true,
+                Reference(_) | Universe | Function { .. } => true,
                 Variable(index) => *index != variable || nestings == current_nestings,
-                Lambda { body, .. } => {
-                    n_boxes_helper(body, variable.child(), nestings, current_nestings)
+                Lambda { body, erased, .. } => {
+                    if !erased {
+                        n_boxes_helper(body, variable.child(), nestings, current_nestings)
+                    } else {
+                        true
+                    }
                 }
                 Apply { function, argument } => {
                     n_boxes_helper(function, variable, nestings, current_nestings)
@@ -89,22 +91,8 @@ impl Term {
                 }
 
                 Wrap(term) => n_boxes_helper(term, variable, nestings, current_nestings),
-                Annotation { expression, ty, .. } => {
+                Annotation { expression, .. } => {
                     n_boxes_helper(expression, variable, nestings, current_nestings)
-                        && n_boxes_helper(ty, variable, nestings, current_nestings)
-                }
-                Function {
-                    argument_type,
-                    return_type,
-                    ..
-                } => {
-                    n_boxes_helper(argument_type, variable, nestings, current_nestings)
-                        && n_boxes_helper(
-                            return_type,
-                            variable.child().child(),
-                            nestings,
-                            current_nestings,
-                        )
                 }
             }
         }
@@ -116,18 +104,24 @@ impl Term {
         use Term::*;
 
         match &self {
-            Lambda { body, binding } => {
-                if body.uses() > 1 {
-                    return Err(StratificationError::AffineReused {
-                        name: binding.clone(),
-                        term: self.clone(),
-                    });
-                }
-                if !body.is_boxed_n_times(0) {
-                    return Err(StratificationError::AffineUsedInBox {
-                        name: binding.clone(),
-                        term: self.clone(),
-                    });
+            Lambda {
+                body,
+                binding,
+                erased,
+            } => {
+                if !erased {
+                    if body.uses() > 1 {
+                        return Err(StratificationError::AffineReused {
+                            name: binding.clone(),
+                            term: self.clone(),
+                        });
+                    }
+                    if !body.is_boxed_n_times(0) {
+                        return Err(StratificationError::AffineUsedInBox {
+                            name: binding.clone(),
+                            term: self.clone(),
+                        });
+                    }
                 }
                 body.is_stratified(definitions)?;
             }
@@ -169,10 +163,13 @@ impl Term {
             Function {
                 argument_type,
                 return_type,
+                erased,
                 ..
             } => {
-                argument_type.is_stratified(definitions)?;
-                return_type.is_stratified(definitions)?;
+                if !erased {
+                    argument_type.is_stratified(definitions)?;
+                    return_type.is_stratified(definitions)?;
+                }
             }
         }
 

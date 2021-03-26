@@ -33,10 +33,11 @@ where
 }
 
 parser! {
-    fn lambda[Input](ctx: Context)(Input) -> Term
+    fn lambda[Input](erased: bool, ctx: Context)(Input) -> Term
         where [Input: Stream<Token = char>]
     {
-        name().then(|name| (value(name.clone()), term(ctx.with(name)).map(Box::new))).map(|(binding, body)| Term::Lambda { binding, body })
+        let erased = *erased;
+        name().then(|name| (value(name.clone()), term(ctx.with(name)).map(Box::new))).map(move |(binding, body)| Term::Lambda { binding, body, erased })
     }
 }
 
@@ -147,9 +148,11 @@ impl Context {
 }
 
 parser! {
-    fn function[Input](ctx: Context)(Input) -> Term
+    fn function[Input](erased: bool, ctx: Context)(Input) -> Term
         where [Input: Stream<Token = char>]
     {
+        let erased = *erased;
+
         (
             maybe_name().skip(token(',')),
             maybe_name().skip(token(':')),
@@ -162,12 +165,13 @@ parser! {
                 (value(self_binding), value(argument_binding), value(argument_type), term(ctx).map(Box::new))
             }
         })
-        .map(|(self_binding, argument_binding, argument_type, return_type)| {
+        .map(move |(self_binding, argument_binding, argument_type, return_type)| {
             Term::Function {
                 self_binding,
                 argument_binding,
                 argument_type,
-                return_type
+                return_type,
+                erased
             }
         })
     }
@@ -177,12 +181,14 @@ fn term<Input>(ctx: Context) -> impl Parser<Input, Output = Term>
 where
     Input: Stream<Token = char>,
 {
-    let parser = token('\\').with(lambda(ctx.clone()));
+    let parser = token('\\').with(lambda(false, ctx.clone()));
+    let parser = parser.or(token('/').with(lambda(true, ctx.clone())));
     let parser = parser.or(token('(').with(apply(ctx.clone())).skip(token(')')));
     let parser = parser.or(token('{').with(annotation(ctx.clone())).skip(token('}')));
     let parser = parser.or(token('.').with(_box(ctx.clone())));
     let parser = parser.or(token(':').with(duplicate(ctx.clone())));
-    let parser = parser.or(token('+').with(function(ctx.clone())));
+    let parser = parser.or(token('+').with(function(false, ctx.clone())));
+    let parser = parser.or(token('_').with(function(true, ctx.clone())));
     let parser = parser.or(token('*').with(value(Term::Universe)));
     let parser = parser.or(token('!').with(wrap(ctx.clone())));
     let parser = parser.or(reference(ctx));

@@ -145,7 +145,7 @@ impl Term {
                     Put(expression) => {
                         body.substitute_top(expression);
                         body.normalize(definitions)?;
-                        *self = *body.clone();
+                        *self = replace(body, Universe);
                     }
                     Duplicate {
                         binding: new_binding,
@@ -200,6 +200,7 @@ impl Term {
                     Lambda { mut body, .. } => {
                         body.substitute_top(argument);
                         body.normalize(definitions)?;
+
                         *self = *body;
                     }
                     _ => {
@@ -220,10 +221,13 @@ impl Term {
             Function {
                 argument_type,
                 return_type,
+                erased,
                 ..
             } => {
-                argument_type.normalize(definitions)?;
-                return_type.normalize(definitions)?;
+                if !*erased {
+                    argument_type.normalize(definitions)?;
+                    return_type.normalize(definitions)?;
+                }
             }
         }
 

@@ -1,37 +1,37 @@
-Void : * = +void,prop: +,:Void * (prop void)
+Void : * = _void,prop: +,:Void * (prop void)
 
-Unit : * = +unit,prop: +,:Unit * +,:(prop new) (prop unit)
+Unit : * = _unit,prop: +,:Unit * +,:(prop new) (prop unit)
 
-new : Unit = \prop \x x
+new : Unit = /prop \x x
 
 Bool : * =
-   +bool, prop: +,:Bool *
+    _bool, prop: +,:Bool *
         +,:(prop true)
         +,:(prop false)
         (prop bool)
 
 true : Bool =
-    \prop \t \f t
+    /prop \t \f t
 
 false : Bool =
-    \prop \t \f f
+    /prop \t \f f
 
 not : +,:Bool Bool = \x ((x \self Bool) false true)
 
 Nat : * =
-    +nat, prop: +,:Nat *
+    _nat, prop: +,:Nat *
     +,:(prop zero)
     +,:
         +,pred:Nat 
             (prop (succ pred))
     (prop nat)
 
-zero : Nat = \prop \z \s z
+zero : Nat = /prop \z \s z
 
-succ : +,:Nat Nat = \n \prop \z \s (s n)
+succ : +,:Nat Nat = \n /prop \z \s (s n)
 
-List : +,:* * = \A
-    +list, prop: +,:(List A) *
+List : _,:* * = /A
+    _list, prop: +,:(List A) *
     +,:(prop (nil A))
     +,:
         +,head:A
@@ -39,9 +39,14 @@ List : +,:* * = \A
         (prop (cons A head tail))
     (prop list)
 
-nil : +,A:* (List A) = \A \prop \nil \cons nil
+nil : _,A:* (List A) = /A /prop \nil \cons nil
 
-cons : +,A:* +,head:A +,tail:(List A) (List A) = \A \head \tail \prop
+cons : _,A:* +,head:A +,tail:(List A) (List A) = /A \head \tail /prop
     \nil \cons (cons head tail)
 
-main : (List Nat) = (cons Nat zero (nil Nat))
+typeif : _,A:* _,B:* +,a:Bool * = /A /B \a
+    ((a \x *) A B)
+if : _,A:* _,B:* +,bool:Bool +,:A +,:B (typeif A B bool) = /A /B \bool \a \b 
+    ((bool \self (typeif A B self)) a b)
+
+main : Unit = (if Unit Nat true new zero)

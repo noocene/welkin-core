@@ -8,6 +8,7 @@ pub enum CheckError {
     InferenceError(InferenceError),
     NonFunctionLambda { term: Term, ty: Term },
     TypeError { expected: Term, got: Term },
+    ErasureMismatch { lambda: Term, ty: Term },
 }
 
 impl From<NormalizationError> for CheckError {
@@ -54,18 +55,18 @@ pub(crate) mod sealed {
 }
 
 pub trait TypedDefinitions: sealed::SealedDefinitions {
-    fn get(&self, name: &str) -> Option<&(Term, Term)>;
+    fn get_typed(&self, name: &str) -> Option<&(Term, Term)>;
 }
 
 impl TypedDefinitions for HashMap<String, (Term, Term)> {
-    fn get(&self, name: &str) -> Option<&(Term, Term)> {
+    fn get_typed(&self, name: &str) -> Option<&(Term, Term)> {
         HashMap::get(self, name)
     }
 }
 
 impl<T: TypedDefinitions> Definitions for T {
     fn get(&self, name: &str) -> Option<&Term> {
-        TypedDefinitions::get(self, name).map(|(_, b)| b)
+        TypedDefinitions::get_typed(self, name).map(|(_, b)| b)
     }
 }
 
@@ -82,13 +83,24 @@ impl Term {
         reduced.lazy_normalize(definitions)?;
 
         Ok(match self {
-            Lambda { body, binding } => {
+            Lambda {
+                body,
+                binding,
+                erased,
+            } => {
                 if let Function {
                     argument_type,
                     mut return_type,
+                    erased: function_erased,
                     ..
                 } = reduced
                 {
+                    if *erased != function_erased {
+                        Err(CheckError::ErasureMismatch {
+                            lambda: self.clone(),
+                            ty: ty.clone(),
+                        })?;
+                    }
                     let ctx = ctx.with(binding.clone());
                     let self_annotation = Term::Annotation {
                         checked: true,
@@ -146,7 +158,7 @@ impl Term {
                 *ty.clone()
             }
             Reference(name) => {
-                if let Some((ty, _)) = definitions.get(name) {
+                if let Some((ty, _)) = definitions.get_typed(name) {
                     ty.clone()
                 } else {
                     Err(InferenceError::UnboundReference(name.clone()))?
@@ -157,6 +169,7 @@ impl Term {
                 argument_binding,
                 argument_type,
                 return_type,
+                ..
             } => {
                 let mut ret_ctx = ctx.with(self_binding.clone());
                 ret_ctx = ret_ctx.with(argument_binding.clone());
@@ -195,7 +208,7 @@ impl Term {
                     ..
                 } = &function_type
                 {
-                    let self_annotation = Term::Annotation {
+                    let mut self_annotation = Term::Annotation {
                         expression: function.clone(),
                         ty: Box::new(function_type.clone()),
                         checked: true,
@@ -207,8 +220,10 @@ impl Term {
                     };
                     argument.check_inner(argument_type, definitions, ctx)?;
                     let mut return_type = return_type.clone();
+                    self_annotation.shift_top();
                     return_type.substitute(Index::top().child(), &self_annotation);
                     return_type.substitute_top(&argument_annotation);
+                    return_type.lazy_normalize(definitions)?;
                     *return_type
                 } else {
                     Err(InferenceError::NonFunctionApplication(*function.clone()))?

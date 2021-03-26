@@ -13,7 +13,11 @@ impl Term {
                 ctx.lookup(*symbol)
                     .unwrap_or_else(|| { format!("^{}", symbol.0) })
             ),
-            Lambda { binding, body } => write!(f, "\\{} ", binding)
+            Lambda {
+                binding,
+                body,
+                erased,
+            } => write!(f, "{}{} ", if *erased { "/" } else { "\\" }, binding)
                 .and_then(|_| body.write(f, &mut ctx.with(binding.clone()))),
             Apply { function, argument } => write!(f, "(")
                 .and_then(|_| function.write(f, ctx))
@@ -42,15 +46,22 @@ impl Term {
                 argument_binding,
                 argument_type,
                 return_type,
-            } => write!(f, "+{},{}:", self_binding, argument_binding)
-                .and_then(|_| argument_type.write(f, ctx))
-                .and_then(|_| write!(f, " "))
-                .and_then(|_| {
-                    let mut ctx = ctx
-                        .with(self_binding.clone())
-                        .with(argument_binding.clone());
-                    return_type.write(f, &mut ctx)
-                }),
+                erased,
+            } => write!(
+                f,
+                "{}{},{}:",
+                if *erased { "_" } else { "+" },
+                self_binding,
+                argument_binding
+            )
+            .and_then(|_| argument_type.write(f, ctx))
+            .and_then(|_| write!(f, " "))
+            .and_then(|_| {
+                let mut ctx = ctx
+                    .with(self_binding.clone())
+                    .with(argument_binding.clone());
+                return_type.write(f, &mut ctx)
+            }),
         }
     }
 }

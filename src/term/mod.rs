@@ -21,6 +21,7 @@ pub enum Term {
     Lambda {
         binding: String,
         body: Box<Term>,
+        erased: bool,
     },
     Apply {
         function: Box<Term>,
@@ -41,6 +42,7 @@ pub enum Term {
         argument_binding: String,
         argument_type: Box<Term>,
         return_type: Box<Term>,
+        erased: bool,
     },
     Annotation {
         checked: bool,
