@@ -2,7 +2,7 @@ use std::convert::TryFrom;
 
 use crate::{
     net::{AgentType, Port, Storage},
-    term::{Definitions, Stratified, Term},
+    term::{Definitions, Index, Stratified, Term},
     Net,
 };
 
@@ -93,6 +93,8 @@ impl Term {
             }
             Lambda { body, erased, .. } => {
                 if *erased {
+                    let mut body = body.clone();
+                    body.substitute_top(&Term::Variable(Index::top()));
                     body.build_net(net, definitions, var_ptrs)?
                 } else {
                     let lambda = net.add(AgentType::Delta).ports();
