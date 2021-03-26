@@ -12,57 +12,6 @@ pub enum NetError {
 }
 
 impl Term {
-    // fn erase(&mut self) {
-    //     use Term::*;
-
-    //     match self {
-    //         Variable(_) | Universe | Reference(_) => {}
-    //         Function {
-    //             argument_type,
-    //             return_type,
-    //             ..
-    //         } => {
-    //             argument_type.erase();
-    //             return_type.erase();
-    //         }
-    //         Lambda { body, .. } => {
-    //             body.erase();
-    //         }
-    //         Apply {
-    //             function,
-    //             argument,
-    //             erased,
-    //         } => {
-    //             println!("FUN: {:?}", function);
-    //             match &mut **function {
-    //                 Lambda { erased, body, .. } => {
-    //                     println!("{:?}", erased);
-    //                     if *erased {
-    //                         *self = replace(body, Universe);
-    //                     }
-    //                 }
-    //                 _ => {
-    //                     function.erase();
-    //                     argument.erase();
-    //                 }
-    //             }
-    //         }
-    //         Duplicate {
-    //             expression, body, ..
-    //         } => {
-    //             expression.erase();
-    //             body.erase();
-    //         }
-    //         Put(data) | Wrap(data) => {
-    //             data.erase();
-    //         }
-    //         Term::Annotation { expression, .. } => {
-    //             expression.erase();
-    //             *self = replace(expression, Universe);
-    //         }
-    //     }
-    // }
-
     fn build_net<T: Storage + Clone + Eq, U: Definitions>(
         &self,
         net: &mut Net<T>,
