@@ -1,11 +1,18 @@
-use std::{rc::Rc, str::FromStr};
+use std::{
+    fmt::{self, Debug, Display},
+    rc::Rc,
+    str::FromStr,
+};
+use thiserror::Error;
 
 pub mod typed;
 pub mod untyped;
 
 use combine::{
+    easy::{Error, Errors, Info},
     many, many1, parser,
     parser::char::{alpha_num, digit, spaces},
+    stream::PointerOffset,
     token as bare_token, value, EasyParser, Parser, Stream,
 };
 
@@ -204,36 +211,103 @@ where
     spaces().with(parser)
 }
 
-#[derive(Debug)]
-pub struct Errors {
-    pub position: usize,
-    pub errors: Vec<String>,
+#[derive(Debug, Error)]
+pub struct ParseError {
+    got: String,
+    expected: Vec<String>,
+    position: usize,
+}
+
+impl Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Unexpected {} at position {}", self.got, self.position)?;
+        if !self.expected.is_empty() {
+            write!(
+                f,
+                "\nExpected {}",
+                if self.expected.len() > 1 {
+                    "one of "
+                } else {
+                    ""
+                },
+            )?;
+            let mut iter = self.expected.iter().peekable();
+            while let Some(expected) = iter.next() {
+                if self.expected.len() > 1 && !iter.peek().is_some() {
+                    write!(f, "or ")?;
+                }
+                write!(f, "{}", expected)?;
+                if iter.peek().is_some() {
+                    write!(f, ", ")?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl<T: Debug, R: Debug, P: ?Sized> From<Errors<T, R, PointerOffset<P>>> for ParseError {
+    fn from(e: Errors<T, R, PointerOffset<P>>) -> Self {
+        ParseError {
+            position: e.position.0,
+            got: e
+                .errors
+                .iter()
+                .find_map(|e| match e {
+                    Error::Unexpected(e) => Some(match e {
+                        Info::Token(token) => format!("token {:?}", token),
+                        _ => format!("{:?}", e),
+                    }),
+                    _ => None,
+                })
+                .unwrap(),
+            expected: {
+                let mut expected: Vec<String> = e
+                    .errors
+                    .iter()
+                    .filter_map(|e| match e {
+                        Error::Expected(e) => Some(match e {
+                            Info::Token(token) => format!("{:?}", token),
+                            Info::Static(stat) => (*stat).to_owned(),
+                            _ => format!("{:?}", e),
+                        }),
+                        _ => None,
+                    })
+                    .collect();
+                expected.sort();
+                expected
+            },
+        }
+    }
 }
 
 impl FromStr for Term {
-    type Err = Errors;
+    type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let definitions = Default::default();
+        let mut position = None;
         let data = term(definitions)
             .easy_parse(s)
-            .map_err(|e| Errors {
-                position: e.position.translate_position(&s),
-                errors: e.errors.into_iter().map(|a| format!("{}", a)).collect(),
+            .map_err(|e| {
+                position = Some(e.position);
+                ParseError::from(e)
             })
             .and_then(|(a, remainder)| {
                 if !remainder.is_empty() {
-                    Err(Errors {
-                        position: s.len() - 1,
-                        errors: vec![format!(
-                            "parsing finished with {} chars left over: {:?}",
-                            remainder.len(),
-                            remainder
-                        )],
+                    Err(ParseError {
+                        got: format!("{:?}", remainder),
+                        expected: vec!["end of input".into()],
+                        position: s.len(),
                     })
                 } else {
                     Ok(a)
                 }
+            })
+            .map_err(|mut e| {
+                e.position = position.unwrap().translate_position(s);
+                e
             });
 
         data

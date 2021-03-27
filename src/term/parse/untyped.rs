@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 type Term = crate::term::Term<String>;
 
-use super::{name, term, token, Context, Errors};
+use super::{name, term, token, Context, ParseError};
 
 fn definition<Input>(ctx: Context) -> impl Parser<Input, Output = (String, Term)>
 where
@@ -25,7 +25,7 @@ pub struct Definitions {
 }
 
 impl FromStr for Definitions {
-    type Err = Errors;
+    type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s
@@ -33,26 +33,28 @@ impl FromStr for Definitions {
             .filter(|line| !line.starts_with("-") && !line.is_empty())
             .collect::<Vec<_>>()
             .join("\n");
+        let mut position = None;
         let ctx: Context = Default::default();
         let data = definitions(ctx.clone())
             .easy_parse(s.as_str())
-            .map_err(|e| Errors {
-                position: e.position.translate_position(&s),
-                errors: e.errors.into_iter().map(|a| format!("{}", a)).collect(),
+            .map_err(|e| {
+                position = Some(e.position);
+                ParseError::from(e)
             })
             .and_then(|(terms, remainder)| {
                 if !remainder.is_empty() {
-                    Err(Errors {
-                        position: s.len() - 1,
-                        errors: vec![format!(
-                            "parsing finished with {} chars left over: {:?}",
-                            remainder.len(),
-                            remainder
-                        )],
+                    Err(ParseError {
+                        got: format!("{:?}", remainder),
+                        expected: vec!["end of input".into()],
+                        position: s.len(),
                     })
                 } else {
                     Ok(Definitions { terms })
                 }
+            })
+            .map_err(|mut e| {
+                e.position = position.unwrap().translate_position(&s);
+                e
             });
 
         data

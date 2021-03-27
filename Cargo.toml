@@ -8,3 +8,4 @@ edition = "2018"
 combine = "4.5.2"
 derivative = "2.2.0"
 dot = { git = "https://github.com/syntacticsugarglider/dot-rust", branch = "main" }
+thiserror = "1.0.24"
