@@ -1,5 +1,6 @@
 mod eq;
 mod index;
+mod map_reference;
 mod normalize;
 mod parse;
 mod show;
