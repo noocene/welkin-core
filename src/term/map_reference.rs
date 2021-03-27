@@ -4,47 +4,49 @@ use super::Term;
 
 impl<T> Term<T> {
     pub fn try_map_reference<U, E, F: Fn(T) -> Result<U, E>>(self, f: F) -> Result<Term<U>, E> {
+        use Term::*;
+
         Ok(match self {
-            Term::Variable(var) => Term::Variable(var),
-            Term::Lambda { body, erased } => Term::Lambda {
+            Variable(var) => Variable(var),
+            Lambda { body, erased } => Lambda {
                 body: Box::new(body.try_map_reference(f)?),
                 erased,
             },
-            Term::Apply {
+            Apply {
                 function,
                 argument,
                 erased,
-            } => Term::Apply {
+            } => Apply {
                 function: Box::new(function.try_map_reference(&f)?),
                 argument: Box::new(argument.try_map_reference(f)?),
                 erased,
             },
-            Term::Put(term) => Term::Put(Box::new(term.try_map_reference(f)?)),
-            Term::Duplicate { expression, body } => Term::Duplicate {
+            Put(term) => Put(Box::new(term.try_map_reference(f)?)),
+            Duplicate { expression, body } => Duplicate {
                 expression: Box::new(expression.try_map_reference(&f)?),
                 body: Box::new(body.try_map_reference(f)?),
             },
-            Term::Reference(reference) => Term::Reference(f(reference)?),
-            Term::Universe => Term::Universe,
-            Term::Function {
+            Reference(reference) => Reference(f(reference)?),
+            Universe => Universe,
+            Function {
                 argument_type,
                 return_type,
                 erased,
-            } => Term::Function {
+            } => Function {
                 argument_type: Box::new(argument_type.try_map_reference(&f)?),
                 return_type: Box::new(return_type.try_map_reference(f)?),
                 erased,
             },
-            Term::Annotation {
+            Annotation {
                 checked,
                 expression,
                 ty,
-            } => Term::Annotation {
+            } => Annotation {
                 expression: Box::new(expression.try_map_reference(&f)?),
                 ty: Box::new(ty.try_map_reference(f)?),
                 checked,
             },
-            Term::Wrap(term) => Term::Wrap(Box::new(term.try_map_reference(f)?)),
+            Wrap(term) => Wrap(Box::new(term.try_map_reference(f)?)),
         })
     }
     pub fn map_reference<U, F: Fn(T) -> U>(self, f: F) -> Term<U> {
