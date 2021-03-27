@@ -70,7 +70,6 @@ impl<T> Term<T> {
                     argument_type,
                     mut return_type,
                     erased: function_erased,
-                    ..
                 } = reduced
                 {
                     if *erased != function_erased {

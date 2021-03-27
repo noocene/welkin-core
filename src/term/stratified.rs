@@ -96,9 +96,7 @@ impl<T> Term<T> {
                             || n_boxes_helper(argument, variable, nestings, current_nestings))
                 }
                 Put(term) => n_boxes_helper(term, variable, nestings, current_nestings + 1),
-                Duplicate {
-                    expression, body, ..
-                } => {
+                Duplicate { expression, body } => {
                     n_boxes_helper(expression, variable, nestings, current_nestings)
                         && n_boxes_helper(body, variable.child(), nestings, current_nestings)
                 }
@@ -169,7 +167,6 @@ impl<T> Term<T> {
                 argument_type,
                 return_type,
                 erased,
-                ..
             } => {
                 if !erased {
                     argument_type.is_stratified(definitions)?;

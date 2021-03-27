@@ -9,12 +9,21 @@ impl<T: PartialEq + Clone> PartialEq for Term<T> {
         fn eq_helper<T: PartialEq + Clone>(a: &Term<T>, b: &Term<T>, index: Index) -> bool {
             match (a, b) {
                 (Variable(a), Variable(b)) => a == b,
-                (Lambda { body: a_body, .. }, Lambda { body: b_body, .. }) => {
+                (
+                    Lambda {
+                        body: a_body,
+                        erased: a_erased,
+                    },
+                    Lambda {
+                        body: b_body,
+                        erased: b_erased,
+                    },
+                ) => {
                     let mut a_body = a_body.clone();
                     a_body.substitute_top(&Term::Variable(index));
                     let mut b_body = b_body.clone();
                     b_body.substitute_top(&Term::Variable(index));
-                    eq_helper(&a_body, &b_body, index.child())
+                    eq_helper(&a_body, &b_body, index.child()) && a_erased == b_erased
                 }
                 (
                     Apply {
@@ -35,17 +44,19 @@ impl<T: PartialEq + Clone> PartialEq for Term<T> {
                 (Put(a), Put(b)) => eq_helper(a, b, index),
                 (
                     Duplicate {
-                        expression: _,
-                        body: _,
-                        ..
+                        expression: a_expression,
+                        body: a_body,
                     },
                     Duplicate {
-                        expression: _,
-                        body: _,
-                        ..
+                        expression: b_expression,
+                        body: b_body,
                     },
                 ) => {
-                    todo!("equality for duplicate")
+                    let mut a_body = a_body.clone();
+                    a_body.substitute_top(&Term::Variable(index));
+                    let mut b_body = b_body.clone();
+                    b_body.substitute_top(&Term::Variable(index));
+                    eq_helper(&a_body, &b_body, index.child()) && a_expression == b_expression
                 }
                 (Reference(a), Reference(b)) => a == b,
 
@@ -54,13 +65,11 @@ impl<T: PartialEq + Clone> PartialEq for Term<T> {
                         return_type: a_return_type,
                         argument_type: a_argument_type,
                         erased: a_erased,
-                        ..
                     },
                     Function {
                         return_type: b_return_type,
                         argument_type: b_argument_type,
                         erased: b_erased,
-                        ..
                     },
                 ) => {
                     let mut a_return_type = a_return_type.clone();

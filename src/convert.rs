@@ -46,7 +46,7 @@ impl<T> Term<T> {
                     .unwrap()
                     .build_net(net, definitions, var_ptrs)?
             }
-            Lambda { body, erased, .. } => {
+            Lambda { body, erased } => {
                 if *erased {
                     let mut body = body.clone();
                     body.substitute_top(&Term::Variable(Index::top()));
