@@ -71,7 +71,9 @@ impl FromStr for Definitions {
                 }
             })
             .map_err(|mut e| {
-                e.position = position.unwrap().translate_position(&s);
+                if let Some(position) = position {
+                    e.position = position.translate_position(&s);
+                }
                 e
             });
 
