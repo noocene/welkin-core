@@ -7,7 +7,7 @@ mod stratified;
 
 pub use crate::analysis::{Definitions, TypedDefinitions};
 pub use normalize::NormalizationError;
-pub use parse::{typed, untyped};
+pub use parse::{typed, untyped, ParseError};
 pub(crate) use show::debug_reference;
 pub use show::Show;
 pub use stratified::{StratificationError, Stratified};

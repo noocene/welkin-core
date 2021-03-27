@@ -10,7 +10,7 @@ use crate::{
 #[derive(Derivative)]
 #[derivative(Debug(bound = "T: Show"))]
 pub enum NetError<T> {
-    TypedTerm { term: Term<T> },
+    TypedTerm(Term<T>),
 }
 
 impl<T> Term<T> {
@@ -86,7 +86,7 @@ impl<T> Term<T> {
                 }
             }
             Annotation { expression, .. } => expression.build_net(net, definitions, var_ptrs)?,
-            _ => Err(NetError::TypedTerm { term: self.clone() })?,
+            _ => Err(NetError::TypedTerm(self.clone()))?,
         })
     }
 }

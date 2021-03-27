@@ -23,7 +23,7 @@ impl<T: Show> Term<T> {
         match &self {
             Variable(symbol) => write!(f, "^{}", symbol.0),
             Lambda { body, erased } => {
-                write!(f, "{} ", if *erased { "/" } else { "\\" }).and_then(|_| body.write(f))
+                write!(f, "{}x ", if *erased { "/" } else { "\\" }).and_then(|_| body.write(f))
             }
             Apply {
                 function,
