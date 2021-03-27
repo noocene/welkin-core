@@ -17,4 +17,7 @@ impl Index {
     pub(crate) fn top() -> Self {
         Index(0)
     }
+    pub fn value(self) -> usize {
+        self.0
+    }
 }
