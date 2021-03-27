@@ -39,7 +39,7 @@ parser! {
         where [Input: Stream<Token = char>]
     {
         let erased = *erased;
-        name().then(|name| (value(name.clone()), term(ctx.with(name)).map(Box::new))).map(move |(binding, body)| Term::Lambda { erased, binding, body })
+        name().then(|name| term(ctx.with(name)).map(Box::new)).map(move |body| Term::Lambda { erased, body })
     }
 }
 
@@ -102,9 +102,8 @@ parser! {
                 value(ctx.clone())
             )
         }).then(|(binding, b, ctx): (String, _, _)| {
-            (value(binding.clone()), value(b), term(ctx.with(binding)).map(Box::new))
-        }).map(|(binding, expression, body)| Term::Duplicate {
-            binding,
+            (value(b), term(ctx.with(binding)).map(Box::new))
+        }).map(|(expression, body)| Term::Duplicate {
             expression,
             body,
         })
@@ -146,10 +145,6 @@ impl Context {
         }
         None
     }
-
-    pub(crate) fn lookup(&self, symbol: Index) -> Option<String> {
-        self.0.iter().rev().nth(symbol.0).cloned()
-    }
 }
 
 parser! {
@@ -167,13 +162,11 @@ parser! {
             let ctx = ctx.clone();
             move |(self_binding, argument_binding, argument_type)| {
                 let ctx = ctx.with(self_binding.clone()).with(argument_binding.clone());
-                (value(self_binding), value(argument_binding), value(argument_type), term(ctx).map(Box::new))
+                (value(argument_type), term(ctx).map(Box::new))
             }
         })
-        .map(move |(self_binding, argument_binding, argument_type, return_type)| {
+        .map(move |(argument_type, return_type)| {
             Term::Function {
-                self_binding,
-                argument_binding,
                 argument_type,
                 return_type,
                 erased

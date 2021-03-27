@@ -51,11 +51,10 @@ impl<U, T: TypedDefinitions<U>> Definitions<U> for T {
 }
 
 impl<T> Term<T> {
-    fn check_inner<U: TypedDefinitions<T>>(
+    pub fn check<U: TypedDefinitions<T>>(
         &self,
         ty: &Term<T>,
         definitions: &U,
-        ctx: &Context,
     ) -> Result<(), AnalysisError<T>>
     where
         T: Clone + Eq,
@@ -66,11 +65,7 @@ impl<T> Term<T> {
         reduced.lazy_normalize(definitions)?;
 
         Ok(match self {
-            Lambda {
-                body,
-                binding,
-                erased,
-            } => {
+            Lambda { body, erased } => {
                 if let Function {
                     argument_type,
                     mut return_type,
@@ -84,7 +79,6 @@ impl<T> Term<T> {
                             ty: ty.clone(),
                         })?;
                     }
-                    let ctx = ctx.with(binding.clone());
                     let mut self_annotation = Term::Annotation {
                         checked: true,
                         expression: Box::new(self.clone()),
@@ -93,14 +87,14 @@ impl<T> Term<T> {
                     let argument_annotation = Term::Annotation {
                         checked: true,
                         ty: argument_type,
-                        expression: Box::new(Term::Variable(ctx.resolve(&binding).unwrap())),
+                        expression: Box::new(Term::Variable(Index::top())),
                     };
                     self_annotation.shift_top();
                     return_type.substitute(Index::top().child(), &self_annotation);
                     return_type.substitute_top(&argument_annotation);
                     let mut body = body.clone();
                     body.substitute_top(&argument_annotation);
-                    body.check_inner(&*return_type, definitions, &ctx)?;
+                    body.check(&*return_type, definitions)?;
                 } else {
                     Err(AnalysisError::NonFunctionLambda {
                         term: self.clone(),
@@ -108,30 +102,25 @@ impl<T> Term<T> {
                     })?
                 }
             }
-            Duplicate {
-                expression,
-                binding,
-                body,
-            } => {
-                let expression_ty = expression.infer_inner(definitions, ctx)?;
+            Duplicate { expression, body } => {
+                let expression_ty = expression.infer(definitions)?;
                 let expression_ty = if let Wrap(term) = expression_ty {
                     term
                 } else {
                     Err(AnalysisError::UnboxedDuplication(self.clone()))?
                 };
-                let ctx = ctx.with(binding.clone());
                 let argument_annotation = Term::Annotation {
                     checked: true,
                     ty: expression_ty,
-                    expression: Box::new(Term::Variable(ctx.resolve(&binding).unwrap())),
+                    expression: Box::new(Term::Variable(Index::top())),
                 };
                 let mut body = body.clone();
                 body.substitute_top(&argument_annotation);
-                body.check_inner(&reduced, definitions, &ctx)?;
+                body.check(&reduced, definitions)?;
             }
             Put(term) => {
                 if let Wrap(ty) = reduced {
-                    term.check_inner(&ty, definitions, ctx)?;
+                    term.check(&ty, definitions)?;
                 } else {
                     Err(AnalysisError::ExpectedWrap {
                         term: self.clone(),
@@ -140,7 +129,7 @@ impl<T> Term<T> {
                 }
             }
             _ => {
-                let mut inferred = self.infer_inner(definitions, ctx)?;
+                let mut inferred = self.infer(definitions)?;
                 inferred.lazy_normalize(definitions)?;
                 if inferred != reduced {
                     Err(AnalysisError::TypeError {
@@ -152,10 +141,9 @@ impl<T> Term<T> {
         })
     }
 
-    fn infer_inner<U: TypedDefinitions<T>>(
+    pub fn infer<U: TypedDefinitions<T>>(
         &self,
         definitions: &U,
-        ctx: &Context,
     ) -> Result<Term<T>, AnalysisError<T>>
     where
         T: Clone + Eq,
@@ -170,7 +158,7 @@ impl<T> Term<T> {
                 checked,
             } => {
                 if !checked {
-                    expression.check_inner(ty, definitions, ctx)?;
+                    expression.check(ty, definitions)?;
                 }
                 *ty.clone()
             }
@@ -182,33 +170,26 @@ impl<T> Term<T> {
                 }
             }
             Function {
-                self_binding,
-                argument_binding,
                 argument_type,
                 return_type,
                 ..
             } => {
-                let mut ret_ctx = ctx.with(self_binding.clone());
-                ret_ctx = ret_ctx.with(argument_binding.clone());
-
                 let mut self_annotation = Term::Annotation {
                     checked: true,
-                    expression: Box::new(Term::Variable(ret_ctx.resolve(self_binding).unwrap())),
+                    expression: Box::new(Term::Variable(Index::top().child())),
                     ty: Box::new(self.clone()),
                 };
                 let argument_annotation = Term::Annotation {
                     checked: true,
-                    expression: Box::new(Term::Variable(
-                        ret_ctx.resolve(argument_binding).unwrap(),
-                    )),
+                    expression: Box::new(Term::Variable(Index::top())),
                     ty: argument_type.clone(),
                 };
-                argument_type.check_inner(&Universe, definitions, ctx)?;
+                argument_type.check(&Universe, definitions)?;
                 let mut return_type = return_type.clone();
                 self_annotation.shift_top();
                 return_type.substitute(Index::top().child(), &self_annotation);
                 return_type.substitute_top(&argument_annotation);
-                return_type.check_inner(&Universe, definitions, &ret_ctx)?;
+                return_type.check(&Universe, definitions)?;
                 Universe
             }
             Apply {
@@ -216,7 +197,7 @@ impl<T> Term<T> {
                 argument,
                 erased,
             } => {
-                let mut function_type = function.infer_inner(definitions, ctx)?;
+                let mut function_type = function.infer(definitions)?;
                 function_type.lazy_normalize(definitions)?;
                 if let Function {
                     argument_type,
@@ -241,7 +222,7 @@ impl<T> Term<T> {
                         ty: argument_type.clone(),
                         checked: true,
                     };
-                    argument.check_inner(argument_type, definitions, ctx)?;
+                    argument.check(argument_type, definitions)?;
                     let mut return_type = return_type.clone();
                     self_annotation.shift_top();
                     return_type.substitute(Index::top().child(), &self_annotation);
@@ -255,7 +236,7 @@ impl<T> Term<T> {
             Variable { .. } => self.clone(),
 
             Wrap(expression) => {
-                let mut expression_ty = expression.infer_inner(definitions, ctx)?;
+                let mut expression_ty = expression.infer(definitions)?;
                 expression_ty.lazy_normalize(definitions)?;
                 if expression_ty != Universe {
                     Err(AnalysisError::InvalidWrap {
@@ -265,32 +246,9 @@ impl<T> Term<T> {
                 }
                 Universe
             }
-            Put(expression) => Wrap(Box::new(expression.infer_inner(definitions, ctx)?)),
+            Put(expression) => Wrap(Box::new(expression.infer(definitions)?)),
 
             _ => Err(AnalysisError::Impossible(self.clone()))?,
         })
-    }
-
-    pub fn check<U: TypedDefinitions<T>>(
-        &self,
-        ty: &Term<T>,
-        definitions: &U,
-    ) -> Result<(), AnalysisError<T>>
-    where
-        T: Clone + Eq,
-    {
-        let mut context = Default::default();
-        self.check_inner(&ty, definitions, &mut context)
-    }
-
-    pub fn infer<U: TypedDefinitions<T>>(
-        &self,
-        definitions: &U,
-    ) -> Result<Term<T>, AnalysisError<T>>
-    where
-        T: Clone + Eq,
-    {
-        let mut context = Default::default();
-        self.infer_inner(definitions, &mut context)
     }
 }

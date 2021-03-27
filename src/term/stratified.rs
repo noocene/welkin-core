@@ -21,18 +21,9 @@ impl<'a, T, U: Definitions<T>> Stratified<'a, T, U> {
 #[derive(Derivative)]
 #[derivative(Debug(bound = "T: Show"))]
 pub enum StratificationError<T> {
-    AffineReused {
-        name: String,
-        term: Term<T>,
-    },
-    AffineUsedInBox {
-        name: String,
-        term: Term<T>,
-    },
-    DupNonUnitBoxMultiplicity {
-        name: String,
-        term: Term<T>,
-    },
+    AffineReused(Term<T>),
+    AffineUsedInBox(Term<T>),
+    DupNonUnitBoxMultiplicity(Term<T>),
     UndefinedReference {
         #[derivative(Debug(format_with = "debug_reference"))]
         reference: T,
@@ -132,18 +123,12 @@ impl<T> Term<T> {
         use Term::*;
 
         match &self {
-            Lambda { body, binding, .. } => {
+            Lambda { body, .. } => {
                 if body.uses() > 1 {
-                    return Err(StratificationError::AffineReused {
-                        name: binding.clone(),
-                        term: self.clone(),
-                    });
+                    return Err(StratificationError::AffineReused(self.clone()));
                 }
                 if !body.is_boxed_n_times(0) {
-                    return Err(StratificationError::AffineUsedInBox {
-                        name: binding.clone(),
-                        term: self.clone(),
-                    });
+                    return Err(StratificationError::AffineUsedInBox(self.clone()));
                 }
 
                 body.is_stratified(definitions)?;
@@ -157,16 +142,9 @@ impl<T> Term<T> {
             Put(term) => {
                 term.is_stratified(definitions)?;
             }
-            Duplicate {
-                binding,
-                body,
-                expression,
-            } => {
+            Duplicate { body, expression } => {
                 if !body.is_boxed_n_times(1) {
-                    return Err(StratificationError::DupNonUnitBoxMultiplicity {
-                        name: binding.clone(),
-                        term: self.clone(),
-                    });
+                    return Err(StratificationError::DupNonUnitBoxMultiplicity(self.clone()));
                 }
                 expression.is_stratified(definitions)?;
                 body.is_stratified(definitions)?;

@@ -53,14 +53,12 @@ impl<T: PartialEq + Clone> PartialEq for Term<T> {
                     Function {
                         return_type: a_return_type,
                         argument_type: a_argument_type,
-                        self_binding: a_self_binding,
                         erased: a_erased,
                         ..
                     },
                     Function {
                         return_type: b_return_type,
                         argument_type: b_argument_type,
-                        self_binding: b_self_binding,
                         erased: b_erased,
                         ..
                     },
@@ -73,7 +71,6 @@ impl<T: PartialEq + Clone> PartialEq for Term<T> {
                     b_return_type.substitute_top(&Term::Variable(index.child()));
                     eq_helper(&a_return_type, &b_return_type, index.child().child())
                         && eq_helper(a_argument_type, b_argument_type, index)
-                        && a_self_binding == b_self_binding
                         && (a_erased == b_erased)
                 }
                 (Universe, Universe) => true,

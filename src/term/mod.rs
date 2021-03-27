@@ -20,7 +20,6 @@ pub enum Term<T> {
     // Untyped language
     Variable(Index),
     Lambda {
-        binding: String,
         body: Box<Term<T>>,
         erased: bool,
     },
@@ -31,7 +30,6 @@ pub enum Term<T> {
     },
     Put(Box<Term<T>>),
     Duplicate {
-        binding: String,
         expression: Box<Term<T>>,
         body: Box<Term<T>>,
     },
@@ -40,8 +38,6 @@ pub enum Term<T> {
     // Typed extensions,
     Universe,
     Function {
-        self_binding: String,
-        argument_binding: String,
         argument_type: Box<Term<T>>,
         return_type: Box<Term<T>>,
         erased: bool,

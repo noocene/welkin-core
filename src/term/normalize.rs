@@ -155,11 +155,7 @@ impl<T> Term<T> {
             Put(term) => {
                 term.normalize(definitions)?;
             }
-            Duplicate {
-                body,
-                expression,
-                binding,
-            } => {
+            Duplicate { body, expression } => {
                 expression.normalize(definitions)?;
                 match &**expression {
                     Put(expression) => {
@@ -168,19 +164,15 @@ impl<T> Term<T> {
                         *self = replace(body, Universe);
                     }
                     Duplicate {
-                        binding: new_binding,
                         expression,
                         body: new_body,
                     } => {
                         body.shift(Index::top().child());
-                        let binding = binding.clone();
                         let dup = Duplicate {
                             body: body.clone(),
                             expression: new_body.clone(),
-                            binding,
                         };
                         let mut term = Duplicate {
-                            binding: new_binding.clone(),
                             expression: expression.clone(),
                             body: Box::new(dup),
                         };
@@ -205,11 +197,7 @@ impl<T> Term<T> {
                 } else {
                     match *function {
                         Put(_) => Err(NormalizationError::InvalidApplication)?,
-                        Duplicate {
-                            body,
-                            expression,
-                            binding,
-                        } => {
+                        Duplicate { body, expression } => {
                             let mut argument = argument.clone();
                             argument.shift_top();
                             let body = Box::new(Apply {
@@ -217,11 +205,7 @@ impl<T> Term<T> {
                                 argument,
                                 erased: *erased,
                             });
-                            let mut term = Duplicate {
-                                binding,
-                                expression,
-                                body,
-                            };
+                            let mut term = Duplicate { expression, body };
                             term.normalize(definitions)?;
                             *self = term;
                         }
@@ -285,11 +269,7 @@ impl<T> Term<T> {
             Put(term) => {
                 term.lazy_normalize(definitions)?;
             }
-            Duplicate {
-                body,
-                expression,
-                binding,
-            } => {
+            Duplicate { body, expression } => {
                 expression.lazy_normalize(definitions)?;
                 match &**expression {
                     Put(expression) => {
@@ -298,19 +278,15 @@ impl<T> Term<T> {
                         *self = *body.clone();
                     }
                     Duplicate {
-                        binding: new_binding,
                         expression,
                         body: new_body,
                     } => {
                         body.shift(Index::top().child());
-                        let binding = binding.clone();
                         let dup = Duplicate {
                             body: body.clone(),
                             expression: new_body.clone(),
-                            binding,
                         };
                         let mut term = Duplicate {
-                            binding: new_binding.clone(),
                             expression: expression.clone(),
                             body: Box::new(dup),
                         };
@@ -332,11 +308,7 @@ impl<T> Term<T> {
                 let function = function.clone();
                 match *function {
                     Put(_) => Err(NormalizationError::InvalidApplication)?,
-                    Duplicate {
-                        body,
-                        expression,
-                        binding,
-                    } => {
+                    Duplicate { body, expression } => {
                         let mut argument = argument.clone();
                         argument.shift_top();
                         let body = Box::new(Apply {
@@ -344,11 +316,7 @@ impl<T> Term<T> {
                             argument,
                             erased: *erased,
                         });
-                        let mut term = Duplicate {
-                            binding,
-                            expression,
-                            body,
-                        };
+                        let mut term = Duplicate { expression, body };
                         term.lazy_normalize(definitions)?;
                         *self = term;
                     }
