@@ -1,23 +1,29 @@
 use std::convert::TryFrom;
 
+use derivative::Derivative;
+
 use crate::{
     net::{AgentType, Port, Storage},
-    term::{Definitions, Index, Stratified, Term},
+    term::{Definitions, Index, Show, Stratified, Term},
     Net,
 };
 
-#[derive(Debug)]
-pub enum NetError {
-    TypedTerm { term: Term },
+#[derive(Derivative)]
+#[derivative(Debug(bound = "T: Show"))]
+pub enum NetError<T> {
+    TypedTerm { term: Term<T> },
 }
 
-impl Term {
-    fn build_net<T: Storage + Clone + Eq, U: Definitions>(
+impl<T> Term<T> {
+    fn build_net<S: Storage + Clone + Eq, U: Definitions<T>>(
         &self,
-        net: &mut Net<T>,
+        net: &mut Net<S>,
         definitions: &U,
-        var_ptrs: &mut Vec<Port<T>>,
-    ) -> Result<Port<T>, NetError> {
+        var_ptrs: &mut Vec<Port<S>>,
+    ) -> Result<Port<S>, NetError<T>>
+    where
+        T: Clone,
+    {
         use Term::*;
 
         Ok(match self {
@@ -86,10 +92,12 @@ impl Term {
     }
 }
 
-impl<'a, T: Storage + Clone + Eq + Copy, U: Definitions> TryFrom<Stratified<'a, U>> for Net<T> {
-    type Error = NetError;
+impl<'a, S: Storage + Clone + Eq + Copy, T: Clone, U: Definitions<T>> TryFrom<Stratified<'a, T, U>>
+    for Net<S>
+{
+    type Error = NetError<T>;
 
-    fn try_from(terms: Stratified<'_, U>) -> Result<Self, Self::Error> {
+    fn try_from(terms: Stratified<'_, T, U>) -> Result<Self, Self::Error> {
         let (mut net, root) = Net::new();
         let mut var_ptrs = vec![];
         let entry = terms.0.build_net(&mut net, terms.1, &mut var_ptrs)?;

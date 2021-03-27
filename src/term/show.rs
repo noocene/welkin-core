@@ -1,8 +1,22 @@
-use std::fmt::{self, Debug};
+use std::fmt::{self, Debug, Display};
 
 use super::{parse::Context, Term};
 
-impl Term {
+impl<T: Display> Show for T {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Display::fmt(self, f)
+    }
+}
+
+pub trait Show {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result;
+}
+
+pub fn debug_reference<T: Show>(data: &T, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    Show::fmt(data, f)
+}
+
+impl<T: Show> Term<T> {
     fn write(&self, f: &mut fmt::Formatter<'_>, ctx: &mut Context) -> fmt::Result {
         use Term::*;
 
@@ -29,7 +43,7 @@ impl Term {
                 .and_then(|_| argument.write(f, ctx))
                 .and_then(move |_| write!(f, "{}", if *erased { "]" } else { ")" })),
             Put(term) => write!(f, ". ").and_then(|_| term.write(f, ctx)),
-            Reference(name) => write!(f, "{}", name),
+            Reference(name) => name.fmt(f),
             Duplicate {
                 binding,
                 expression,
@@ -70,7 +84,7 @@ impl Term {
     }
 }
 
-impl Debug for Term {
+impl<T: Show> Debug for Term<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut context = Default::default();
         self.write(f, &mut context)

@@ -8,4 +8,5 @@ edition = "2018"
 
 [dependencies]
 combine = "4.5.2"
+derivative = "2.2.0"
 dot = { git = "https://github.com/syntacticsugarglider/dot-rust", branch = "main" }

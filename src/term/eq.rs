@@ -1,12 +1,12 @@
 use super::{Index, Term};
 
-impl Eq for Term {}
+impl<T: Eq + Clone> Eq for Term<T> {}
 
-impl PartialEq for Term {
+impl<T: PartialEq + Clone> PartialEq for Term<T> {
     fn eq(&self, other: &Self) -> bool {
         use Term::*;
 
-        fn eq_helper(a: &Term, b: &Term, index: Index) -> bool {
+        fn eq_helper<T: PartialEq + Clone>(a: &Term<T>, b: &Term<T>, index: Index) -> bool {
             match (a, b) {
                 (Variable(a), Variable(b)) => a == b,
                 (Lambda { body: a_body, .. }, Lambda { body: b_body, .. }) => {

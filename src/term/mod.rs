@@ -4,73 +4,56 @@ mod normalize;
 mod parse;
 mod show;
 mod stratified;
-use std::collections::HashMap;
 
 pub use normalize::NormalizationError;
 pub(crate) use parse::Context;
 pub use parse::{typed, untyped};
+pub(crate) use show::debug_reference;
+pub use show::Show;
 pub use stratified::{StratificationError, Stratified};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Index(pub(crate) usize);
 
 #[derive(Clone)]
-pub enum Term {
+pub enum Term<T> {
     // Untyped language
     Variable(Index),
     Lambda {
         binding: String,
-        body: Box<Term>,
+        body: Box<Term<T>>,
         erased: bool,
     },
     Apply {
-        function: Box<Term>,
-        argument: Box<Term>,
+        function: Box<Term<T>>,
+        argument: Box<Term<T>>,
         erased: bool,
     },
-    Put(Box<Term>),
+    Put(Box<Term<T>>),
     Duplicate {
         binding: String,
-        expression: Box<Term>,
-        body: Box<Term>,
+        expression: Box<Term<T>>,
+        body: Box<Term<T>>,
     },
-    Reference(String),
+    Reference(T),
 
     // Typed extensions,
     Universe,
     Function {
         self_binding: String,
         argument_binding: String,
-        argument_type: Box<Term>,
-        return_type: Box<Term>,
+        argument_type: Box<Term<T>>,
+        return_type: Box<Term<T>>,
         erased: bool,
     },
     Annotation {
         checked: bool,
-        expression: Box<Term>,
-        ty: Box<Term>,
+        expression: Box<Term<T>>,
+        ty: Box<Term<T>>,
     },
-    Wrap(Box<Term>),
+    Wrap(Box<Term<T>>),
 }
 
-mod sealed {
-    use std::collections::HashMap;
-
-    use super::Term;
-
-    pub trait SealedDefinitions {}
-
-    impl SealedDefinitions for HashMap<String, Term> {}
-
-    impl<T: crate::analysis::sealed::SealedDefinitions> SealedDefinitions for T {}
-}
-
-pub trait Definitions: sealed::SealedDefinitions {
-    fn get(&self, name: &str) -> Option<&Term>;
-}
-
-impl Definitions for HashMap<String, Term> {
-    fn get(&self, name: &str) -> Option<&Term> {
-        HashMap::get(self, name)
-    }
+pub trait Definitions<T> {
+    fn get(&self, name: &T) -> Option<&Term<T>>;
 }

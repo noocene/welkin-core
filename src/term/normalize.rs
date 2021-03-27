@@ -8,7 +8,7 @@ pub enum NormalizationError {
     InvalidApplication,
 }
 
-impl Term {
+impl<T> Term<T> {
     pub(crate) fn shift(&mut self, replaced: Index) {
         use Term::*;
 
@@ -56,13 +56,19 @@ impl Term {
         self.shift(Index::top())
     }
 
-    pub(crate) fn substitute_shifted(&mut self, variable: Index, term: &Term) {
+    pub(crate) fn substitute_shifted(&mut self, variable: Index, term: &Term<T>)
+    where
+        T: Clone,
+    {
         let mut term = term.clone();
         term.shift_top();
         self.substitute(variable.child(), &term)
     }
 
-    pub(crate) fn substitute(&mut self, variable: Index, term: &Term) {
+    pub(crate) fn substitute(&mut self, variable: Index, term: &Term<T>)
+    where
+        T: Clone,
+    {
         use Term::*;
 
         match self {
@@ -113,14 +119,20 @@ impl Term {
         }
     }
 
-    pub(crate) fn substitute_top(&mut self, term: &Term) {
+    pub(crate) fn substitute_top(&mut self, term: &Term<T>)
+    where
+        T: Clone,
+    {
         self.substitute(Index::top(), term)
     }
 
-    pub(crate) fn normalize<U: Definitions>(
+    pub(crate) fn normalize<U: Definitions<T>>(
         &mut self,
         definitions: &U,
-    ) -> Result<(), NormalizationError> {
+    ) -> Result<(), NormalizationError>
+    where
+        T: Clone,
+    {
         use Term::*;
 
         match self {
@@ -251,10 +263,13 @@ impl Term {
         Ok(())
     }
 
-    pub(crate) fn lazy_normalize<U: Definitions>(
+    pub(crate) fn lazy_normalize<U: Definitions<T>>(
         &mut self,
         definitions: &U,
-    ) -> Result<(), NormalizationError> {
+    ) -> Result<(), NormalizationError>
+    where
+        T: Clone,
+    {
         use Term::*;
 
         match self {

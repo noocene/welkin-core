@@ -1,22 +1,24 @@
-use std::collections::HashMap;
+use derivative::Derivative;
+use std::{collections::HashMap, hash::Hash};
 
-use crate::term::{Context, Definitions, Index, NormalizationError, Term};
+use crate::term::{debug_reference, Context, Definitions, Index, NormalizationError, Show, Term};
 
-#[derive(Debug)]
-pub enum AnalysisError {
+#[derive(Derivative)]
+#[derivative(Debug(bound = "T: Show"))]
+pub enum AnalysisError<T> {
     NormalizationError(NormalizationError),
-    NonFunctionLambda { term: Term, ty: Term },
-    TypeError { expected: Term, got: Term },
-    ErasureMismatch { lambda: Term, ty: Term },
-    UnboundReference(String),
-    NonFunctionApplication(Term),
-    UnboxedDuplication(Term),
-    Impossible(Term),
-    ExpectedWrap { term: Term, ty: Term },
-    InvalidWrap { wrap: Term, got: Term },
+    NonFunctionLambda { term: Term<T>, ty: Term<T> },
+    TypeError { expected: Term<T>, got: Term<T> },
+    ErasureMismatch { lambda: Term<T>, ty: Term<T> },
+    UnboundReference(#[derivative(Debug(format_with = "debug_reference"))] T),
+    NonFunctionApplication(Term<T>),
+    UnboxedDuplication(Term<T>),
+    Impossible(Term<T>),
+    ExpectedWrap { term: Term<T>, ty: Term<T> },
+    InvalidWrap { wrap: Term<T>, got: Term<T> },
 }
 
-impl From<NormalizationError> for AnalysisError {
+impl<T> From<NormalizationError> for AnalysisError<T> {
     fn from(e: NormalizationError) -> Self {
         AnalysisError::NormalizationError(e)
     }
@@ -27,34 +29,37 @@ pub(crate) mod sealed {
 
     use crate::term::Term;
 
-    pub trait SealedDefinitions {}
+    pub trait SealedDefinitions<T> {}
 
-    impl SealedDefinitions for HashMap<String, (Term, Term)> {}
+    impl<T> SealedDefinitions<T> for HashMap<T, (Term<T>, Term<T>)> {}
 }
 
-pub trait TypedDefinitions: sealed::SealedDefinitions {
-    fn get_typed(&self, name: &str) -> Option<&(Term, Term)>;
+pub trait TypedDefinitions<T>: sealed::SealedDefinitions<T> {
+    fn get_typed(&self, name: &T) -> Option<&(Term<T>, Term<T>)>;
 }
 
-impl TypedDefinitions for HashMap<String, (Term, Term)> {
-    fn get_typed(&self, name: &str) -> Option<&(Term, Term)> {
+impl<T: Hash + Eq> TypedDefinitions<T> for HashMap<T, (Term<T>, Term<T>)> {
+    fn get_typed(&self, name: &T) -> Option<&(Term<T>, Term<T>)> {
         HashMap::get(self, name)
     }
 }
 
-impl<T: TypedDefinitions> Definitions for T {
-    fn get(&self, name: &str) -> Option<&Term> {
+impl<U, T: TypedDefinitions<U>> Definitions<U> for T {
+    fn get(&self, name: &U) -> Option<&Term<U>> {
         TypedDefinitions::get_typed(self, name).map(|(_, b)| b)
     }
 }
 
-impl Term {
-    fn check_inner<U: TypedDefinitions>(
+impl<T> Term<T> {
+    fn check_inner<U: TypedDefinitions<T>>(
         &self,
-        ty: &Term,
+        ty: &Term<T>,
         definitions: &U,
         ctx: &Context,
-    ) -> Result<(), AnalysisError> {
+    ) -> Result<(), AnalysisError<T>>
+    where
+        T: Clone + Eq,
+    {
         use Term::*;
 
         let mut reduced = ty.clone();
@@ -147,11 +152,14 @@ impl Term {
         })
     }
 
-    fn infer_inner<U: TypedDefinitions>(
+    fn infer_inner<U: TypedDefinitions<T>>(
         &self,
         definitions: &U,
         ctx: &Context,
-    ) -> Result<Term, AnalysisError> {
+    ) -> Result<Term<T>, AnalysisError<T>>
+    where
+        T: Clone + Eq,
+    {
         use Term::*;
 
         Ok(match self {
@@ -185,19 +193,13 @@ impl Term {
 
                 let mut self_annotation = Term::Annotation {
                     checked: true,
-                    expression: Box::new(Term::Variable(
-                        ret_ctx
-                            .resolve(self_binding)
-                            .ok_or_else(|| AnalysisError::UnboundReference(self_binding.clone()))?,
-                    )),
+                    expression: Box::new(Term::Variable(ret_ctx.resolve(self_binding).unwrap())),
                     ty: Box::new(self.clone()),
                 };
                 let argument_annotation = Term::Annotation {
                     checked: true,
                     expression: Box::new(Term::Variable(
-                        ret_ctx.resolve(argument_binding).ok_or_else(|| {
-                            AnalysisError::UnboundReference(argument_binding.clone())
-                        })?,
+                        ret_ctx.resolve(argument_binding).unwrap(),
                     )),
                     ty: argument_type.clone(),
                 };
@@ -269,16 +271,25 @@ impl Term {
         })
     }
 
-    pub fn check<U: TypedDefinitions>(
+    pub fn check<U: TypedDefinitions<T>>(
         &self,
-        ty: &Term,
+        ty: &Term<T>,
         definitions: &U,
-    ) -> Result<(), AnalysisError> {
+    ) -> Result<(), AnalysisError<T>>
+    where
+        T: Clone + Eq,
+    {
         let mut context = Default::default();
         self.check_inner(&ty, definitions, &mut context)
     }
 
-    pub fn infer<U: TypedDefinitions>(&self, definitions: &U) -> Result<Term, AnalysisError> {
+    pub fn infer<U: TypedDefinitions<T>>(
+        &self,
+        definitions: &U,
+    ) -> Result<Term<T>, AnalysisError<T>>
+    where
+        T: Clone + Eq,
+    {
         let mut context = Default::default();
         self.infer_inner(definitions, &mut context)
     }

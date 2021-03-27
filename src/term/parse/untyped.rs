@@ -1,7 +1,7 @@
 use combine::{many, EasyParser, Parser, Stream};
 use std::str::FromStr;
 
-use crate::term::Term;
+type Term = crate::term::Term<String>;
 
 use super::{name, term, token, Context, Errors};
 

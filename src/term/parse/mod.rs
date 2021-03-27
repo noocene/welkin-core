@@ -9,7 +9,9 @@ use combine::{
     token as bare_token, value, EasyParser, Parser, Stream,
 };
 
-use super::{Index, Term};
+use super::Index;
+
+type Term = super::Term<String>;
 
 fn name<Input>() -> impl Parser<Input, Output = String>
 where

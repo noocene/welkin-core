@@ -1,29 +1,47 @@
-use super::{normalize::NormalizationError, Definitions, Index, Term};
+use derivative::Derivative;
 
-#[derive(Debug, Clone)]
-pub struct Stratified<'a, U: Definitions>(pub(crate) Term, pub(crate) &'a U);
+use super::{debug_reference, normalize::NormalizationError, Definitions, Index, Show, Term};
 
-impl<'a, U: Definitions> Stratified<'a, U> {
-    pub fn normalize(&mut self) -> Result<(), NormalizationError> {
+#[derive(Clone)]
+pub struct Stratified<'a, T, U: Definitions<T>>(pub(crate) Term<T>, pub(crate) &'a U);
+
+impl<'a, T, U: Definitions<T>> Stratified<'a, T, U> {
+    pub fn normalize(&mut self) -> Result<(), NormalizationError>
+    where
+        T: Clone,
+    {
         self.0.normalize(self.1)
     }
 
-    pub fn into_inner(self) -> Term {
+    pub fn into_inner(self) -> Term<T> {
         self.0
     }
 }
 
-#[derive(Debug)]
-pub enum StratificationError {
-    AffineReused { name: String, term: Term },
-    AffineUsedInBox { name: String, term: Term },
-    DupNonUnitBoxMultiplicity { name: String, term: Term },
-    UndefinedReference { name: String },
+#[derive(Derivative)]
+#[derivative(Debug(bound = "T: Show"))]
+pub enum StratificationError<T> {
+    AffineReused {
+        name: String,
+        term: Term<T>,
+    },
+    AffineUsedInBox {
+        name: String,
+        term: Term<T>,
+    },
+    DupNonUnitBoxMultiplicity {
+        name: String,
+        term: Term<T>,
+    },
+    UndefinedReference {
+        #[derivative(Debug(format_with = "debug_reference"))]
+        reference: T,
+    },
 }
 
-impl Term {
+impl<T> Term<T> {
     fn uses(&self) -> usize {
-        fn uses_helper(term: &Term, variable: Index) -> usize {
+        fn uses_helper<T>(term: &Term<T>, variable: Index) -> usize {
             use Term::*;
             match term {
                 Variable(index) => {
@@ -65,8 +83,8 @@ impl Term {
     fn is_boxed_n_times(&self, nestings: usize) -> bool {
         use Term::*;
 
-        fn n_boxes_helper(
-            this: &Term,
+        fn n_boxes_helper<T>(
+            this: &Term<T>,
             variable: Index,
             nestings: usize,
             current_nestings: usize,
@@ -104,10 +122,13 @@ impl Term {
         n_boxes_helper(self, Index::top(), nestings, 0)
     }
 
-    pub fn is_stratified<U: Definitions>(
+    pub fn is_stratified<U: Definitions<T>>(
         &self,
         definitions: &U,
-    ) -> Result<(), StratificationError> {
+    ) -> Result<(), StratificationError<T>>
+    where
+        T: Clone,
+    {
         use Term::*;
 
         match &self {
@@ -154,7 +175,9 @@ impl Term {
                 if let Some(term) = definitions.get(name) {
                     term.is_stratified(definitions)?;
                 } else {
-                    return Err(StratificationError::UndefinedReference { name: name.clone() });
+                    return Err(StratificationError::UndefinedReference {
+                        reference: name.clone(),
+                    });
                 }
             }
             Variable(_) | Universe => {}
@@ -180,10 +203,13 @@ impl Term {
         Ok(())
     }
 
-    pub fn stratified<U: Definitions>(
+    pub fn stratified<U: Definitions<T>>(
         self,
         definitions: &U,
-    ) -> Result<Stratified<'_, U>, StratificationError> {
+    ) -> Result<Stratified<'_, T, U>, StratificationError<T>>
+    where
+        T: Clone,
+    {
         self.is_stratified(definitions)?;
         Ok(Stratified(self, definitions))
     }
