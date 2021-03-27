@@ -35,7 +35,7 @@ pub enum Term<T> {
     },
     Reference(T),
 
-    // Typed extensions,
+    // Typed extensions
     Universe,
     Function {
         argument_type: Box<Term<T>>,
