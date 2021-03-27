@@ -6,7 +6,6 @@ mod show;
 mod stratified;
 
 pub use normalize::NormalizationError;
-pub(crate) use parse::Context;
 pub use parse::{typed, untyped};
 pub(crate) use show::debug_reference;
 pub use show::Show;

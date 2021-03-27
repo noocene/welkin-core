@@ -1,7 +1,7 @@
 use derivative::Derivative;
 use std::{collections::HashMap, hash::Hash};
 
-use crate::term::{debug_reference, Context, Definitions, Index, NormalizationError, Show, Term};
+use crate::term::{debug_reference, Definitions, Index, NormalizationError, Show, Term};
 
 #[derive(Derivative)]
 #[derivative(Debug(bound = "T: Show"))]
