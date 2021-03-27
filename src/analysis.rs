@@ -1,7 +1,7 @@
 use derivative::Derivative;
 use std::{collections::HashMap, hash::Hash};
 
-use crate::term::{debug_reference, Definitions, Index, NormalizationError, Show, Term};
+use crate::term::{debug_reference, Index, NormalizationError, Show, Term};
 
 #[derive(Derivative)]
 #[derivative(Debug(bound = "T: Show"))]
@@ -24,17 +24,11 @@ impl<T> From<NormalizationError> for AnalysisError<T> {
     }
 }
 
-pub(crate) mod sealed {
-    use std::collections::HashMap;
-
-    use crate::term::Term;
-
-    pub trait SealedDefinitions<T> {}
-
-    impl<T> SealedDefinitions<T> for HashMap<T, (Term<T>, Term<T>)> {}
+pub trait Definitions<T> {
+    fn get(&self, name: &T) -> Option<&Term<T>>;
 }
 
-pub trait TypedDefinitions<T>: sealed::SealedDefinitions<T> {
+pub trait TypedDefinitions<T> {
     fn get_typed(&self, name: &T) -> Option<&(Term<T>, Term<T>)>;
 }
 

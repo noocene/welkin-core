@@ -24,10 +24,7 @@ pub enum StratificationError<T> {
     AffineReused(Term<T>),
     AffineUsedInBox(Term<T>),
     DupNonUnitBoxMultiplicity(Term<T>),
-    UndefinedReference {
-        #[derivative(Debug(format_with = "debug_reference"))]
-        reference: T,
-    },
+    UndefinedReference(#[derivative(Debug(format_with = "debug_reference"))] T),
 }
 
 impl<T> Term<T> {
@@ -147,13 +144,11 @@ impl<T> Term<T> {
                 expression.is_stratified(definitions)?;
                 body.is_stratified(definitions)?;
             }
-            Reference(name) => {
-                if let Some(term) = definitions.get(name) {
+            Reference(reference) => {
+                if let Some(term) = definitions.get(reference) {
                     term.is_stratified(definitions)?;
                 } else {
-                    return Err(StratificationError::UndefinedReference {
-                        reference: name.clone(),
-                    });
+                    return Err(StratificationError::UndefinedReference(reference.clone()));
                 }
             }
             Variable(_) | Universe => {}

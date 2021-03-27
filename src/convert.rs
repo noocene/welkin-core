@@ -3,9 +3,8 @@ use std::convert::TryFrom;
 use derivative::Derivative;
 
 use crate::{
-    net::{AgentType, Port, Storage},
+    net::{AgentType, Net, Port, Storage},
     term::{Definitions, Index, Show, Stratified, Term},
-    Net,
 };
 
 #[derive(Derivative)]

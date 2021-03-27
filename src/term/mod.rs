@@ -5,6 +5,7 @@ mod parse;
 mod show;
 mod stratified;
 
+pub use crate::analysis::{Definitions, TypedDefinitions};
 pub use normalize::NormalizationError;
 pub use parse::{typed, untyped};
 pub(crate) use show::debug_reference;
@@ -47,8 +48,4 @@ pub enum Term<T> {
         ty: Box<Term<T>>,
     },
     Wrap(Box<Term<T>>),
-}
-
-pub trait Definitions<T> {
-    fn get(&self, name: &T) -> Option<&Term<T>>;
 }
