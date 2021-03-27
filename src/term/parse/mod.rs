@@ -5,7 +5,7 @@ pub mod untyped;
 
 use combine::{
     many, many1, parser,
-    parser::char::{alpha_num, spaces},
+    parser::char::{alpha_num, digit, spaces},
     token as bare_token, value, EasyParser, Parser, Stream,
 };
 
@@ -32,6 +32,15 @@ where
     Input: Stream<Token = char>,
 {
     spaces().with(bare_token(token))
+}
+
+fn variable<Input>() -> impl Parser<Input, Output = Term>
+where
+    Input: Stream<Token = char>,
+{
+    spaces()
+        .with(many1(digit()))
+        .map(|string: String| Term::Variable(Index(string.parse::<usize>().unwrap())))
 }
 
 parser! {
@@ -190,6 +199,7 @@ where
     let parser = parser.or(token('_').with(function(true, ctx.clone())));
     let parser = parser.or(token('*').with(value(Term::Universe)));
     let parser = parser.or(token('!').with(wrap(ctx.clone())));
+    let parser = parser.or(token('^').with(variable()));
     let parser = parser.or(reference(ctx));
     spaces().with(parser)
 }
