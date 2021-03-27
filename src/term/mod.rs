@@ -8,14 +8,16 @@ mod stratified;
 pub use crate::analysis::{Definitions, TypedDefinitions};
 pub use normalize::NormalizationError;
 pub use parse::{typed, untyped, ParseError};
+use serde::{Deserialize, Serialize};
 pub(crate) use show::debug_reference;
 pub use show::Show;
 pub use stratified::{StratificationError, Stratified};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[serde(transparent)]
 pub struct Index(pub(crate) usize);
 
-#[derive(Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub enum Term<T> {
     // Untyped language
     Variable(Index),
