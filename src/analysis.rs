@@ -3,44 +3,22 @@ use std::collections::HashMap;
 use crate::term::{Context, Definitions, Index, NormalizationError, Term};
 
 #[derive(Debug)]
-pub enum CheckError {
+pub enum AnalysisError {
     NormalizationError(NormalizationError),
-    InferenceError(InferenceError),
     NonFunctionLambda { term: Term, ty: Term },
     TypeError { expected: Term, got: Term },
     ErasureMismatch { lambda: Term, ty: Term },
-}
-
-impl From<NormalizationError> for CheckError {
-    fn from(e: NormalizationError) -> Self {
-        CheckError::NormalizationError(e)
-    }
-}
-
-impl From<InferenceError> for CheckError {
-    fn from(e: InferenceError) -> Self {
-        CheckError::InferenceError(e)
-    }
-}
-
-#[derive(Debug)]
-pub enum InferenceError {
     UnboundReference(String),
-    NormalizationError(NormalizationError),
-    CheckError(Box<CheckError>),
     NonFunctionApplication(Term),
+    UnboxedDuplication(Term),
     Impossible(Term),
+    ExpectedWrap { term: Term, ty: Term },
+    InvalidWrap { wrap: Term, got: Term },
 }
 
-impl From<NormalizationError> for InferenceError {
+impl From<NormalizationError> for AnalysisError {
     fn from(e: NormalizationError) -> Self {
-        InferenceError::NormalizationError(e)
-    }
-}
-
-impl From<CheckError> for InferenceError {
-    fn from(e: CheckError) -> Self {
-        InferenceError::CheckError(Box::new(e))
+        AnalysisError::NormalizationError(e)
     }
 }
 
@@ -76,7 +54,7 @@ impl Term {
         ty: &Term,
         definitions: &U,
         ctx: &Context,
-    ) -> Result<(), CheckError> {
+    ) -> Result<(), AnalysisError> {
         use Term::*;
 
         let mut reduced = ty.clone();
@@ -96,7 +74,7 @@ impl Term {
                 } = reduced
                 {
                     if *erased != function_erased {
-                        Err(CheckError::ErasureMismatch {
+                        Err(AnalysisError::ErasureMismatch {
                             lambda: self.clone(),
                             ty: ty.clone(),
                         })?;
@@ -119,18 +97,48 @@ impl Term {
                     body.substitute_top(&argument_annotation);
                     body.check_inner(&*return_type, definitions, &ctx)?;
                 } else {
-                    Err(CheckError::NonFunctionLambda {
+                    Err(AnalysisError::NonFunctionLambda {
                         term: self.clone(),
                         ty: ty.clone(),
                     })?
                 }
             }
-            Duplicate { .. } => todo!("handle duplicate in typecheck"),
+            Duplicate {
+                expression,
+                binding,
+                body,
+            } => {
+                let expression_ty = expression.infer_inner(definitions, ctx)?;
+                let expression_ty = if let Wrap(term) = expression_ty {
+                    term
+                } else {
+                    Err(AnalysisError::UnboxedDuplication(self.clone()))?
+                };
+                let ctx = ctx.with(binding.clone());
+                let argument_annotation = Term::Annotation {
+                    checked: true,
+                    ty: expression_ty,
+                    expression: Box::new(Term::Variable(ctx.resolve(&binding).unwrap())),
+                };
+                let mut body = body.clone();
+                body.substitute_top(&argument_annotation);
+                body.check_inner(&reduced, definitions, &ctx)?;
+            }
+            Put(term) => {
+                if let Wrap(ty) = reduced {
+                    term.check_inner(&ty, definitions, ctx)?;
+                } else {
+                    Err(AnalysisError::ExpectedWrap {
+                        term: self.clone(),
+                        ty: reduced,
+                    })?;
+                }
+            }
             _ => {
                 let mut inferred = self.infer_inner(definitions, ctx)?;
                 inferred.lazy_normalize(definitions)?;
                 if inferred != reduced {
-                    Err(CheckError::TypeError {
+                    Err(AnalysisError::TypeError {
                         expected: reduced.clone(),
                         got: inferred,
                     })?;
@@ -143,7 +151,7 @@ impl Term {
         &self,
         definitions: &U,
         ctx: &Context,
-    ) -> Result<Term, InferenceError> {
+    ) -> Result<Term, AnalysisError> {
         use Term::*;
 
         Ok(match self {
@@ -162,7 +170,7 @@ impl Term {
                 if let Some((ty, _)) = definitions.get_typed(name) {
                     ty.clone()
                 } else {
-                    Err(InferenceError::UnboundReference(name.clone()))?
+                    Err(AnalysisError::UnboundReference(name.clone()))?
                 }
             }
             Function {
@@ -178,9 +186,9 @@ impl Term {
                 let mut self_annotation = Term::Annotation {
                     checked: true,
                     expression: Box::new(Term::Variable(
-                        ret_ctx.resolve(self_binding).ok_or_else(|| {
-                            InferenceError::UnboundReference(self_binding.clone())
-                        })?,
+                        ret_ctx
+                            .resolve(self_binding)
+                            .ok_or_else(|| AnalysisError::UnboundReference(self_binding.clone()))?,
                     )),
                     ty: Box::new(self.clone()),
                 };
@@ -188,7 +196,7 @@ impl Term {
                     checked: true,
                     expression: Box::new(Term::Variable(
                         ret_ctx.resolve(argument_binding).ok_or_else(|| {
-                            InferenceError::UnboundReference(argument_binding.clone())
+                            AnalysisError::UnboundReference(argument_binding.clone())
                         })?,
                     )),
                     ty: argument_type.clone(),
@@ -216,7 +224,7 @@ impl Term {
                 } = &function_type
                 {
                     if erased != function_erased {
-                        Err(CheckError::ErasureMismatch {
+                        Err(AnalysisError::ErasureMismatch {
                             lambda: self.clone(),
                             ty: function_type.clone(),
                         })?;
@@ -239,20 +247,38 @@ impl Term {
                     return_type.lazy_normalize(definitions)?;
                     *return_type
                 } else {
-                    Err(InferenceError::NonFunctionApplication(*function.clone()))?
+                    Err(AnalysisError::NonFunctionApplication(*function.clone()))?
                 }
             }
             Variable { .. } => self.clone(),
-            _ => todo!("the rest of inference for {:?}", self),
+
+            Wrap(expression) => {
+                let mut expression_ty = expression.infer_inner(definitions, ctx)?;
+                expression_ty.lazy_normalize(definitions)?;
+                if expression_ty != Universe {
+                    Err(AnalysisError::InvalidWrap {
+                        got: expression_ty,
+                        wrap: self.clone(),
+                    })?;
+                }
+                Universe
+            }
+            Put(expression) => Wrap(Box::new(expression.infer_inner(definitions, ctx)?)),
+
+            _ => Err(AnalysisError::Impossible(self.clone()))?,
         })
     }
 
-    pub fn check<U: TypedDefinitions>(&self, ty: &Term, definitions: &U) -> Result<(), CheckError> {
+    pub fn check<U: TypedDefinitions>(
+        &self,
+        ty: &Term,
+        definitions: &U,
+    ) -> Result<(), AnalysisError> {
         let mut context = Default::default();
         self.check_inner(&ty, definitions, &mut context)
     }
 
-    pub fn infer<U: TypedDefinitions>(&self, definitions: &U) -> Result<Term, InferenceError> {
+    pub fn infer<U: TypedDefinitions>(&self, definitions: &U) -> Result<Term, AnalysisError> {
         let mut context = Default::default();
         self.infer_inner(definitions, &mut context)
     }

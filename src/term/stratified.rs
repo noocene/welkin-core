@@ -104,7 +104,10 @@ impl Term {
         n_boxes_helper(self, Index::top(), nestings, 0)
     }
 
-    fn is_stratified<U: Definitions>(&self, definitions: &U) -> Result<(), StratificationError> {
+    pub fn is_stratified<U: Definitions>(
+        &self,
+        definitions: &U,
+    ) -> Result<(), StratificationError> {
         use Term::*;
 
         match &self {
