@@ -3,7 +3,10 @@ use std::convert::Infallible;
 use super::Term;
 
 impl<T> Term<T> {
-    pub fn try_map_reference<U, E, F: Fn(T) -> Result<U, E>>(self, f: F) -> Result<Term<U>, E> {
+    pub fn try_map_reference<U, E, F: Fn(T) -> Result<Term<U>, E>>(
+        self,
+        f: F,
+    ) -> Result<Term<U>, E> {
         use Term::*;
 
         Ok(match self {
@@ -26,7 +29,7 @@ impl<T> Term<T> {
                 expression: Box::new(expression.try_map_reference(&f)?),
                 body: Box::new(body.try_map_reference(f)?),
             },
-            Reference(reference) => Reference(f(reference)?),
+            Reference(reference) => f(reference)?,
             Universe => Universe,
             Function {
                 argument_type,
@@ -49,7 +52,7 @@ impl<T> Term<T> {
             Wrap(term) => Wrap(Box::new(term.try_map_reference(f)?)),
         })
     }
-    pub fn map_reference<U, F: Fn(T) -> U>(self, f: F) -> Term<U> {
+    pub fn map_reference<U, F: Fn(T) -> Term<U>>(self, f: F) -> Term<U> {
         self.try_map_reference(|a| Ok::<_, Infallible>(f(a)))
             .unwrap()
     }
