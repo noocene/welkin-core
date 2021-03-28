@@ -211,6 +211,14 @@ where
     spaces().with(parser)
 }
 
+pub fn parse<Input>() -> impl Parser<Input, Output = Term>
+where
+    Input: Stream<Token = char>,
+{
+    let ctx = Default::default();
+    term(ctx)
+}
+
 #[derive(Debug, Error)]
 pub struct ParseError {
     got: String,

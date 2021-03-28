@@ -10,7 +10,7 @@ mod stratified;
 pub use crate::analysis::{Definitions, TypedDefinitions};
 pub use normalize::NormalizationError;
 #[cfg(feature = "parser")]
-pub use parse::{term, typed, untyped, ParseError};
+pub use parse::{parse, typed, untyped, ParseError};
 use serde::{Deserialize, Serialize};
 pub(crate) use show::debug_reference;
 pub use show::Show;
