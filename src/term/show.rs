@@ -36,7 +36,7 @@ impl<T: Show> Term<T> {
                 .and_then(move |_| write!(f, "{}", if *erased { "]" } else { ")" })),
             Put(term) => write!(f, ". ").and_then(|_| term.write(f)),
             Reference(name) => name.fmt(f),
-            Duplicate { expression, body } => write!(f, ":= ")
+            Duplicate { expression, body } => write!(f, ": X = ")
                 .and_then(|_| expression.write(f))
                 .and_then(|_| write!(f, " "))
                 .and_then(|_| body.write(f)),
