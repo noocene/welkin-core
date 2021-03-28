@@ -2,13 +2,15 @@ mod eq;
 mod index;
 mod map_reference;
 mod normalize;
+#[cfg(feature = "parser")]
 mod parse;
 mod show;
 mod stratified;
 
 pub use crate::analysis::{Definitions, TypedDefinitions};
 pub use normalize::NormalizationError;
-pub use parse::{typed, untyped, ParseError};
+#[cfg(feature = "parser")]
+pub use parse::{term, typed, untyped, ParseError};
 use serde::{Deserialize, Serialize};
 pub(crate) use show::debug_reference;
 pub use show::Show;

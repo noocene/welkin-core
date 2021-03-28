@@ -191,7 +191,7 @@ parser! {
     }
 }
 
-fn term<Input>(ctx: Context) -> impl Parser<Input, Output = Term>
+pub fn term<Input>(ctx: Context) -> impl Parser<Input, Output = Term>
 where
     Input: Stream<Token = char>,
 {
