@@ -18,7 +18,7 @@ pub use stratified::{StratificationError, Stratified};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[serde(transparent)]
-pub struct Index(pub(crate) usize);
+pub struct Index(pub usize);
 
 #[derive(Serialize, Deserialize, Clone)]
 pub enum Term<T> {
