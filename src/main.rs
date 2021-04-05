@@ -19,18 +19,19 @@ fn entry(buffer: String, term: String) -> Result<(), String> {
         def.1.check(&def.0, &definitions).map_err(e)?;
     }
 
-    let mut entry = Term::Reference(term).stratified(&definitions).map_err(e)?;
+    let entry = Term::Reference(term).stratified(&definitions).map_err(e)?;
 
     // entry.normalize().map_err(e)?;
 
     let mut entry = entry.into_net::<Net<u32>>().unwrap();
 
+    // let mut entry = entry.into_accelerated().unwrap();
     entry.reduce_all();
-    dot::render(
-        &mut entry,
-        &mut std::fs::File::create("example1.dot").unwrap(),
-    )
-    .unwrap();
+    // let entry = entry.into_inner();
+
+    entry
+        .render_to(&mut std::fs::File::create("example1.dot").unwrap())
+        .unwrap();
 
     Ok(())
 }
@@ -38,7 +39,7 @@ fn entry(buffer: String, term: String) -> Result<(), String> {
 fn main() -> io::Result<()> {
     let mut args = std::env::args().skip(1);
 
-    if let (Some(file), Some(term)) = (args.next(), args.next()) {
+    if let (Some(file), Some(term)) = (Some(String::from("example.wc")), Some("main".into())) {
         let buffer = read_to_string(file)?;
         if let Err(e) = entry(buffer, term) {
             eprintln!("{}", e);

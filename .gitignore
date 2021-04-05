@@ -1,4 +1,4 @@
 /target
+kernels/target
 Cargo.lock
-.vscode
 *.dot

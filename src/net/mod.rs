@@ -6,6 +6,9 @@ pub(crate) use storage::Storage;
 #[cfg(feature = "graphviz")]
 mod vis;
 
+#[cfg(feature = "accelerated")]
+pub mod accelerated;
+
 pub trait PortExt {
     fn is_root(&self) -> bool;
 }
@@ -58,7 +61,7 @@ impl<T: Storage> PortExt for Port<T> {
     }
 }
 
-#[repr(u8)]
+#[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentType {
     Epsilon,
@@ -189,7 +192,7 @@ impl Index {
 pub struct Net<T: Storage> {
     agents: Vec<Agent<T>>,
     freed: Vec<Index>,
-    active: Vec<(Index, Index)>,
+    active: Vec<Index>,
 }
 
 impl<T: Storage + Clone> Net<T> {
@@ -253,7 +256,7 @@ impl<T: Storage + Clone> Net<T> {
         use Slot::Principal;
 
         if a.slot() == Principal && b.slot() == Principal {
-            self.active.push((a.address(), b.address()));
+            self.active.push(a.address());
         }
 
         let a_agent = self.get_mut(a.address());
@@ -288,7 +291,8 @@ impl<T: Storage + Clone> Net<T> {
     pub fn reduce(&mut self, max_rewrites: Option<usize>) -> usize {
         let mut rewrites = 0;
 
-        while let Some((a, b)) = self.active.pop() {
+        while let Some(a) = self.active.pop() {
+            let b = self.follow(Port::new(a, Slot::Principal)).address();
             self.rewrite(a, b);
             rewrites += 1;
             match max_rewrites {

@@ -17,5 +17,11 @@ jobs:
         rustup update
     - name: Build
       run: cargo build
+    - name: Build with hardware acceleration
+      run: cargo build --features accelerated
+    - name: Build with graphviz support
+      run: cargo build --features graphviz
+    - name: Build with all features enabled
+      run: cargo build --features graphviz,accelerated
     - name: Run tests
       run: cargo test

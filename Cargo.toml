@@ -8,10 +8,13 @@ edition = "2018"
 combine = { version = "4.5.2", optional = true }
 derivative = "2.2.0"
 dot = { git = "https://github.com/syntacticsugarglider/dot-rust", branch = "main", optional = true }
+kernels = { optional = true, path = "./kernels" }
 serde = { version = "1.0.125", features = ["derive"] }
 thiserror = "1.0.24"
+vulkano = { version = "0.22.0", optional = true }
 
 [features]
 parser = ["combine"]
 graphviz = ["dot"]
-default = ["parser", "graphviz"]
+accelerated = ["vulkano", "kernels"]
+default = ["parser"]

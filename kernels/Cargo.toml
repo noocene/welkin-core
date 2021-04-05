@@ -1,0 +1,12 @@
+[package]
+name = "kernels"
+version = "0.1.0"
+authors = ["Izzy Swart <zenerboson@gmail.com>"]
+edition = "2018"
+
+[build-dependencies]
+shaderc = "0.7.2"
+
+[dependencies]
+vulkano = "0.22.0"
+vulkano-shaders = "0.22.0"
