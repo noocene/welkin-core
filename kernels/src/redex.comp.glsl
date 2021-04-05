@@ -8,11 +8,11 @@ void main() {
     if (i < state.active_pairs) {
         Index a_addr = active_agents[i];
         Agent a = get(a_addr);
-        Index b_addr = index(a.principal);
-        Agent b = get(b_addr);
 
         if (a.ty != WIRE && atomicCompSwap(agents[a_addr.data].ty.data, a.ty.data, WIRE.data) == a.ty.data) {
             atomicAdd(state.rewrites, 1);
+            Index b_addr = index(a.principal);
+            Agent b = get(b_addr);
 
             if (!same_ty(a, b)) {
                 Index p_addr = alloc();
