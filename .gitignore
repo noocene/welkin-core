@@ -2,3 +2,4 @@
 kernels/target
 Cargo.lock
 *.dot
+**/*.spv

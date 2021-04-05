@@ -25,13 +25,13 @@ fn entry(buffer: String, term: String) -> Result<(), String> {
 
     let mut entry = entry.into_net::<Net<u32>>().unwrap();
 
-    // let mut entry = entry.into_accelerated().unwrap();
-    entry.reduce_all();
+    let mut entry = entry.into_accelerated().unwrap();
+    // entry.reduce_all();
     // let entry = entry.into_inner();
 
-    entry
-        .render_to(&mut std::fs::File::create("example1.dot").unwrap())
-        .unwrap();
+    // entry
+    //     .render_to(&mut std::fs::File::create("example1.dot").unwrap())
+    //     .unwrap();
 
     Ok(())
 }
