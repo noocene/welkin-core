@@ -2,21 +2,21 @@ use std::sync::Arc;
 
 use vulkano::{device::Device, OomError};
 
-mod clear {
+pub mod clear {
     vulkano_shaders::shader! {
         ty: "compute",
         bytes: "src/clear.comp.spv"
     }
 }
 
-mod redex {
+pub mod redex {
     vulkano_shaders::shader! {
         ty: "compute",
         bytes: "src/redex.comp.spv"
     }
 }
 
-mod visit {
+pub mod visit {
     vulkano_shaders::shader! {
         ty: "compute",
         bytes: "src/visit.comp.spv"

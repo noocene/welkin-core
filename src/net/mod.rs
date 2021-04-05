@@ -64,10 +64,13 @@ impl<T: Storage> PortExt for Port<T> {
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentType {
-    Epsilon,
-    Delta,
-    Zeta,
-    Root,
+    Epsilon = 0,
+    Delta = 1,
+    Zeta = 2,
+    Root = 3,
+
+    #[doc(hidden)]
+    WIRE = 0xFFFFFFFF,
 }
 
 #[derive(Debug, Clone)]
@@ -82,9 +85,9 @@ pub struct Agent<T: Storage> {
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Slot {
-    Left,
-    Right,
-    Principal,
+    Principal = 0,
+    Left = 1,
+    Right = 2,
 }
 
 pub struct Ports<T: Storage> {

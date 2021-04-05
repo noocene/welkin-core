@@ -97,9 +97,11 @@ Index alloc() {
     return pos > 0 && pos < 0x80000000 ? freed_agents[pos - 1] : Index(atomicAdd(state.freed_agents, 1));
 }
 
+const Port FREE_PORT = Port(0xFFFFFFFF << 2);
+
 const Agent FREE = Agent(
-    Port(0xFFFFFFFF),
-    Port(0xFFFFFFFF),
-    Port(0xFFFFFFFF),
-    Ty(0xFFFFFFFF)
+    FREE_PORT,
+    FREE_PORT,
+    FREE_PORT,
+    WIRE
 );

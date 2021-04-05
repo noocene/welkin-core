@@ -39,7 +39,7 @@ macro_rules! impl_storage {
                         0 => Principal,
                         1 => Left,
                         2 => Right,
-                        _ => panic!("invalid slot")
+                        invalid => panic!("invalid slot {}", invalid)
                     }
                 }
 

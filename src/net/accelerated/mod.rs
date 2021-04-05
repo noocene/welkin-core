@@ -2,32 +2,90 @@ use std::sync::Arc;
 
 use thiserror::Error;
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer},
+    buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
         AutoCommandBufferBuilder, BuildError, CommandBuffer, CommandBufferExecError, DispatchError,
     },
     descriptor::{
         descriptor_set::{
-            PersistentDescriptorSet, PersistentDescriptorSetBuildError,
-            PersistentDescriptorSetError,
+            PersistentDescriptorSet, PersistentDescriptorSetBuf, PersistentDescriptorSetBuildError,
+            PersistentDescriptorSetError, StdDescriptorPoolAlloc,
         },
+        pipeline_layout::PipelineLayout,
         PipelineLayoutAbstract,
     },
-    device::{Device, DeviceCreationError, DeviceExtensions, Features},
+    device::{Device, DeviceCreationError, DeviceExtensions, Features, Queue},
     instance::{Instance, InstanceCreationError, InstanceExtensions, PhysicalDevice},
-    memory::DeviceMemoryAllocError,
+    memory::{
+        pool::{PotentialDedicatedAllocation, StdMemoryPoolAlloc},
+        DeviceMemoryAllocError,
+    },
     pipeline::{ComputePipeline, ComputePipelineCreationError},
-    sync::GpuFuture,
+    sync::{FlushError, GpuFuture},
     OomError,
 };
 
-const BLOCK_SIZE: u32 = 256;
+const BLOCK_SIZE: u32 = 64;
 
-use super::Net;
+use super::{Agent, AgentType, Index, Net, Port, Slot};
 
-pub struct Accelerated {}
+type DescriptorSet = Arc<
+    PersistentDescriptorSet<
+        (
+            (),
+            PersistentDescriptorSetBuf<
+                Arc<
+                    CpuAccessibleBuffer<
+                        [Agent<u32>],
+                        PotentialDedicatedAllocation<StdMemoryPoolAlloc>,
+                    >,
+                >,
+            >,
+        ),
+        StdDescriptorPoolAlloc,
+    >,
+>;
 
-impl Accelerated {}
+pub struct Accelerated {
+    clear: Arc<ComputePipeline<PipelineLayout<kernels::clear::MainLayout>>>,
+    set: DescriptorSet,
+    queue: Arc<Queue>,
+    device: Arc<Device>,
+    agents: Arc<CpuAccessibleBuffer<[Agent<u32>]>>,
+}
+
+impl Accelerated {
+    fn clear(&mut self) -> Result<(), AcceleratedError> {
+        let command_buffer = {
+            let mut builder =
+                AutoCommandBufferBuilder::new(self.device.clone(), self.queue.family())?;
+
+            builder.dispatch(
+                [
+                    (self.agents.len() as u32 + BLOCK_SIZE - 1) / BLOCK_SIZE,
+                    1,
+                    1,
+                ],
+                self.clear.clone(),
+                self.set.clone(),
+                (),
+                None,
+            )?;
+            builder.build()?
+        };
+
+        let finished = command_buffer.execute(self.queue.clone())?;
+
+        finished.then_signal_fence_and_flush()?.wait(None)?;
+
+        let content = self.agents.read().unwrap();
+        for (_, val) in content.iter().enumerate() {
+            println!("{:?}", val);
+        }
+
+        Ok(())
+    }
+}
 
 #[derive(Debug, Error)]
 pub enum AcceleratedError {
@@ -55,6 +113,8 @@ pub enum AcceleratedError {
     Dispatch(#[from] DispatchError),
     #[error("failed to execute kernel")]
     Exec(#[from] CommandBufferExecError),
+    #[error("failed to flush pipeline")]
+    Flush(#[from] FlushError),
 }
 
 impl Net<u32> {
@@ -80,56 +140,51 @@ impl Net<u32> {
 
         let queue = queues.next().ok_or(AcceleratedError::NoSuitableDevice)?;
 
-        let data_buffer =
-            CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, 0..65535)?;
+        let agents = CpuAccessibleBuffer::from_iter(
+            device.clone(),
+            BufferUsage::all(),
+            false,
+            vec![Agent::new(
+                Port::new(Index(0), Slot::Principal),
+                Port::new(Index(0), Slot::Principal),
+                Port::new(Index(0), Slot::Principal),
+                AgentType::Epsilon,
+            )]
+            .into_iter(),
+        )?;
 
         let kernels = kernels::Kernels::load(device.clone())?;
 
-        let compute_pipeline = Arc::new(ComputePipeline::new(
+        let clear = Arc::new(ComputePipeline::new(
             device.clone(),
             &kernels.clear.main_entry_point(),
             &(),
             None,
         )?);
 
-        let layout = compute_pipeline
-            .layout()
-            .descriptor_set_layout(0)
-            .ok_or(AcceleratedError::DescriptorSetMissing)?;
+        let set = {
+            let layout = clear
+                .layout()
+                .descriptor_set_layout(0)
+                .ok_or(AcceleratedError::DescriptorSetMissing)?;
 
-        let set = Arc::new(
-            PersistentDescriptorSet::start(layout.clone())
-                .add_buffer(data_buffer.clone())?
-                .build()?,
-        );
+            Arc::new(
+                PersistentDescriptorSet::start(layout.clone())
+                    .add_buffer(agents.clone())?
+                    .build()?,
+            )
+        };
 
-        let mut builder = AutoCommandBufferBuilder::new(device.clone(), queue.family())?;
+        let mut a = Accelerated {
+            clear,
+            set,
+            queue,
+            device,
+            agents,
+        };
 
-        builder.dispatch(
-            [(65535 + 1) / BLOCK_SIZE, 1, 1],
-            compute_pipeline.clone(),
-            set.clone(),
-            (),
-            None,
-        )?;
+        a.clear()?;
 
-        let command_buffer = builder.build()?;
-
-        let finished = command_buffer.execute(queue.clone())?;
-
-        finished
-            .then_signal_fence_and_flush()
-            .unwrap()
-            .wait(None)
-            .unwrap();
-
-        let content = data_buffer.read().unwrap();
-        for (_, val) in content.iter().enumerate() {
-            print!("{} ", val);
-        }
-
-        println!("\nEverything succeeded!");
-
-        Ok(Accelerated {})
+        Ok(a)
     }
 }

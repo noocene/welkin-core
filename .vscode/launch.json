@@ -31,7 +31,8 @@
                 "args": [
                     "build",
                     "--bin=welkin-core",
-                    "--package=welkin-core"
+                    "--package=welkin-core",
+                    "--features=accelerated,graphviz"
                 ],
                 "filter": {
                     "name": "welkin-core",

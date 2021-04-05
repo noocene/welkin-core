@@ -32,6 +32,8 @@ fn compile_kernel(entry: &str) {
 }
 
 fn main() {
+    println!("cargo:rerun-if-changed=src/util.glsl");
+
     compile_kernel("clear");
     compile_kernel("redex");
     compile_kernel("visit");

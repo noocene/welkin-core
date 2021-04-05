@@ -75,6 +75,8 @@ impl<'a, T: Storage + Clone + Copy> dot::Labeller<'a, (Index, Agent<T>), (Port<T
                 Root => "*",
                 Delta => "&delta;",
                 Zeta => "&zeta;",
+
+                _ => "WIRE",
             },
             n.0 .0
         )))
