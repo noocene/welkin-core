@@ -1,9 +1,7 @@
-use std::convert::TryFrom;
-
 use derivative::Derivative;
 
 use crate::{
-    net::{AgentType, Net, Port, Storage},
+    net::{AgentType, NetBuilder, PortExt},
     term::{Definitions, Index, Show, Stratified, Term},
 };
 
@@ -14,14 +12,15 @@ pub enum NetError<T> {
 }
 
 impl<T> Term<T> {
-    fn build_net<S: Storage + Clone + Eq, U: Definitions<T>>(
+    fn build_net<U: Definitions<T>, N: NetBuilder>(
         &self,
-        net: &mut Net<S>,
+        net: &mut N,
         definitions: &U,
-        var_ptrs: &mut Vec<Port<S>>,
-    ) -> Result<Port<S>, NetError<T>>
+        var_ptrs: &mut Vec<N::Port>,
+    ) -> Result<N::Port, NetError<T>>
     where
         T: Clone,
+        N::Port: PartialEq + Clone,
     {
         use Term::*;
 
@@ -29,13 +28,13 @@ impl<T> Term<T> {
             Variable(symbol) => {
                 let ptr = var_ptrs.iter().rev().nth(symbol.0).unwrap().clone();
                 let target = net.follow(ptr.clone());
-                if target.address().is_root() || target == ptr {
+                if target.is_root() || target == ptr {
                     ptr
                 } else {
-                    let duplicate = net.add(AgentType::Zeta).ports();
-                    net.connect(duplicate.principal, ptr);
-                    net.connect(duplicate.left, target);
-                    duplicate.right
+                    let (principal, left, right) = net.add(AgentType::Zeta);
+                    net.connect(principal, ptr);
+                    net.connect(left, target);
+                    right
                 }
             }
             Put(term) => term.build_net(net, definitions, var_ptrs)?,
@@ -51,12 +50,12 @@ impl<T> Term<T> {
                     body.substitute_top(&Term::Variable(Index::top()));
                     body.build_net(net, definitions, var_ptrs)?
                 } else {
-                    let lambda = net.add(AgentType::Delta).ports();
-                    var_ptrs.push(lambda.left.clone());
+                    let (principal, left, right) = net.add(AgentType::Delta);
+                    var_ptrs.push(left.clone());
                     let body = body.build_net(net, definitions, var_ptrs)?;
                     var_ptrs.pop();
-                    net.connect(lambda.right, body);
-                    lambda.principal
+                    net.connect(right, body);
+                    principal
                 }
             }
             Duplicate {
@@ -77,12 +76,12 @@ impl<T> Term<T> {
                 if *erased {
                     function.build_net(net, definitions, var_ptrs)?
                 } else {
-                    let apply = net.add(AgentType::Delta).ports();
+                    let (principal, left, right) = net.add(AgentType::Delta);
                     let function = function.build_net(net, definitions, var_ptrs)?;
-                    net.connect(apply.principal, function);
+                    net.connect(principal, function);
                     let argument = argument.build_net(net, definitions, var_ptrs)?;
-                    net.connect(apply.left, argument);
-                    apply.right
+                    net.connect(left, argument);
+                    right
                 }
             }
             Annotation { expression, .. } => expression.build_net(net, definitions, var_ptrs)?,
@@ -91,17 +90,31 @@ impl<T> Term<T> {
     }
 }
 
-impl<'a, S: Storage + Clone + Eq + Copy, T: Clone, U: Definitions<T>> TryFrom<Stratified<'a, T, U>>
-    for Net<S>
-{
-    type Error = NetError<T>;
+mod sealed {
+    use crate::net::NetBuilder;
 
-    fn try_from(terms: Stratified<'_, T, U>) -> Result<Self, Self::Error> {
-        let (mut net, root) = Net::new();
+    pub trait Sealed {}
+
+    impl<T: NetBuilder> Sealed for T {}
+}
+
+pub trait NetBuilderExt<T, U: Definitions<T>>: NetBuilder + sealed::Sealed {
+    fn build_net(terms: Stratified<'_, T, U>) -> Result<Self::Net, NetError<T>>
+    where
+        Self: Sized;
+}
+
+impl<T: NetBuilder, V: Clone, U: Definitions<V>> NetBuilderExt<V, U> for T
+where
+    T::Port: PartialEq + Clone,
+{
+    fn build_net(terms: Stratified<'_, V, U>) -> Result<T::Net, NetError<V>>
+    where
+        Self: Sized,
+    {
+        let mut net = T::new();
         let mut var_ptrs = vec![];
         let entry = terms.0.build_net(&mut net, terms.1, &mut var_ptrs)?;
-        net.connect(root, entry);
-        net.bind_unbound();
-        Ok(net)
+        Ok(net.build(entry))
     }
 }

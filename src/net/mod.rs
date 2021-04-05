@@ -1,13 +1,62 @@
-use std::{
-    fmt::Debug,
-    hash::Hash,
-    io::{self, Write},
-};
+use std::{fmt::Debug, hash::Hash};
 
 mod storage;
 pub(crate) use storage::Storage;
 
+#[cfg(feature = "graphviz")]
 mod vis;
+
+pub trait PortExt {
+    fn is_root(&self) -> bool;
+}
+
+pub trait NetBuilder {
+    type Net;
+    type Port: PortExt;
+
+    fn new() -> Self;
+
+    fn add(&mut self, ty: AgentType) -> (Self::Port, Self::Port, Self::Port);
+    fn connect(&mut self, a: Self::Port, b: Self::Port);
+
+    fn follow(&self, from: Self::Port) -> Self::Port;
+
+    fn build(self, root: Self::Port) -> Self::Net;
+}
+
+impl<T: Storage + Clone + Eq> NetBuilder for Net<T> {
+    type Net = Self;
+    type Port = Port<T>;
+
+    fn new() -> Self {
+        Net::new().0
+    }
+
+    fn add(&mut self, ty: AgentType) -> (Self::Port, Self::Port, Self::Port) {
+        let ports = Net::<T>::add(self, ty).ports();
+        (ports.principal, ports.left, ports.right)
+    }
+
+    fn connect(&mut self, a: Self::Port, b: Self::Port) {
+        Net::<T>::connect(self, a, b)
+    }
+
+    fn follow(&self, from: Self::Port) -> Self::Port {
+        Net::<T>::follow(self, from)
+    }
+
+    fn build(mut self, root: Self::Port) -> Self::Net {
+        self.connect(self.get(Index(0)).ports().right, root);
+        self.bind_unbound();
+        self
+    }
+}
+
+impl<T: Storage> PortExt for Port<T> {
+    fn is_root(&self) -> bool {
+        self.address().is_root()
+    }
+}
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -19,6 +68,7 @@ pub enum AgentType {
 }
 
 #[derive(Debug, Clone)]
+#[repr(C)]
 pub struct Agent<T: Storage> {
     left: Port<T>,
     right: Port<T>,
@@ -143,7 +193,8 @@ pub struct Net<T: Storage> {
 }
 
 impl<T: Storage + Clone> Net<T> {
-    pub fn render_dot<W: Write>(&self, output: &mut W) -> io::Result<()>
+    #[cfg(feature = "graphviz")]
+    pub fn render_to<W: std::io::Write>(&self, output: &mut W) -> std::io::Result<()>
     where
         T: Copy + Eq + Hash,
     {
@@ -255,11 +306,11 @@ impl<T: Storage + Clone> Net<T> {
 
     pub(crate) fn bind_unbound(&mut self)
     where
-        T: Eq + Copy,
+        T: Eq,
     {
         for i in 0..self.agents.len() {
             let ports = self.agents[i].ports();
-            if self.follow(ports.left) == ports.left {
+            if self.follow(ports.left.clone()) == ports.left {
                 let era = self.add(AgentType::Epsilon).ports();
                 self.connect(ports.left, era.principal);
             }

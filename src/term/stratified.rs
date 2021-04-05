@@ -1,5 +1,7 @@
 use derivative::Derivative;
 
+use crate::convert::{NetBuilderExt, NetError};
+
 use super::{debug_reference, normalize::NormalizationError, Definitions, Index, Show, Term};
 
 #[derive(Clone)]
@@ -15,6 +17,10 @@ impl<'a, T, U: Definitions<T>> Stratified<'a, T, U> {
 
     pub fn into_inner(self) -> Term<T> {
         self.0
+    }
+
+    pub fn into_net<N: NetBuilderExt<T, U>>(self) -> Result<N::Net, NetError<T>> {
+        N::build_net(self)
     }
 }
 

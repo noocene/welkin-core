@@ -1,4 +1,7 @@
-use welkin_core::term::{typed::Definitions, ParseError, Term};
+use welkin_core::{
+    net::Net,
+    term::{typed::Definitions, ParseError, Term},
+};
 
 use std::{collections::HashMap, fmt::Debug, fs::read_to_string, io, process::exit};
 
@@ -18,9 +21,16 @@ fn entry(buffer: String, term: String) -> Result<(), String> {
 
     let mut entry = Term::Reference(term).stratified(&definitions).map_err(e)?;
 
-    entry.normalize().map_err(e)?;
+    // entry.normalize().map_err(e)?;
 
-    println!("{:?}", entry.into_inner());
+    let mut entry = entry.into_net::<Net<u32>>().unwrap();
+
+    entry.reduce_all();
+    dot::render(
+        &mut entry,
+        &mut std::fs::File::create("example1.dot").unwrap(),
+    )
+    .unwrap();
 
     Ok(())
 }

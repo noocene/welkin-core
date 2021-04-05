@@ -7,10 +7,11 @@ edition = "2018"
 [dependencies]
 combine = { version = "4.5.2", optional = true }
 derivative = "2.2.0"
-dot = { git = "https://github.com/syntacticsugarglider/dot-rust", branch = "main" }
+dot = { git = "https://github.com/syntacticsugarglider/dot-rust", branch = "main", optional = true }
 serde = { version = "1.0.125", features = ["derive"] }
 thiserror = "1.0.24"
 
 [features]
 parser = ["combine"]
-default = ["parser"]
+graphviz = ["dot"]
+default = ["parser", "graphviz"]
