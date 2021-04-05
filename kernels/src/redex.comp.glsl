@@ -46,6 +46,19 @@ void main() {
                     b.ty
                 ));
 
+                replace(a_addr, Agent(
+                    a.principal,
+                    port(s_addr, PRINCIPAL),
+                    port(r_addr, PRINCIPAL),
+                    WIRE
+                ));
+                replace(b_addr, Agent(
+                    b.principal,
+                    port(p_addr, PRINCIPAL),
+                    port(q_addr, PRINCIPAL),
+                    WIRE
+                ));
+
                 mark_for_visit(index(a.left));
                 mark_for_visit(index(a.right));
                 mark_for_visit(index(b.left));
