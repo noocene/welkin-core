@@ -57,7 +57,4 @@ dup : _,A:* +,:
     : X = x
     . \a (X (X a))
 
-main : !Bool =
-    : Id = ([dup Bool] .not)
-    : X = . (Id false)
-    . (not X)
+main : Bool = (not true)

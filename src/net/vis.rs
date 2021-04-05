@@ -1,19 +1,19 @@
-use std::{borrow::Cow, collections::HashSet, hash::Hash};
+use std::{borrow::Cow, collections::HashSet, fmt::Display, hash::Hash};
 
 use super::{Agent, AgentType, Index, Net, Port, Slot, Storage};
 
-impl<'a, T: Storage + Clone + Copy> dot::Labeller<'a, (Index, Agent<T>), (Port<T>, Port<T>)>
-    for Net<T>
+impl<'a, T: Storage + Display + Clone + Copy>
+    dot::Labeller<'a, (Index<T>, Agent<T>), (Port<T>, Port<T>)> for Net<T>
 {
     fn graph_id(&'a self) -> dot::Id<'a> {
         dot::Id::new("example1").unwrap()
     }
 
-    fn node_id(&'a self, n: &(Index, Agent<T>)) -> dot::Id<'a> {
+    fn node_id(&'a self, n: &(Index<T>, Agent<T>)) -> dot::Id<'a> {
         dot::Id::new(format!("A{}", n.0 .0)).unwrap()
     }
 
-    fn node_shape(&self, n: &(Index, Agent<T>)) -> Option<dot::LabelText<'a>> {
+    fn node_shape(&self, n: &(Index<T>, Agent<T>)) -> Option<dot::LabelText<'a>> {
         Some(dot::LabelText::LabelStr(Cow::Owned(format!(
             "{}",
             match n.1.ty() {
@@ -65,7 +65,7 @@ impl<'a, T: Storage + Clone + Copy> dot::Labeller<'a, (Index, Agent<T>), (Port<T
         ))))
     }
 
-    fn node_label<'b>(&'b self, n: &(Index, Agent<T>)) -> dot::LabelText<'b> {
+    fn node_label<'b>(&'b self, n: &(Index<T>, Agent<T>)) -> dot::LabelText<'b> {
         use AgentType::*;
 
         dot::LabelText::LabelStr(Cow::Owned(format!(
@@ -87,16 +87,17 @@ impl<'a, T: Storage + Clone + Copy> dot::Labeller<'a, (Index, Agent<T>), (Port<T
     }
 }
 
-impl<'a, T: Eq + Hash + Storage + Clone + Copy>
-    dot::GraphWalk<'a, (Index, Agent<T>), (Port<T>, Port<T>)> for Net<T>
+impl<'a, T: PartialOrd + Eq + Hash + Storage + Clone + Copy>
+    dot::GraphWalk<'a, (Index<T>, Agent<T>), (Port<T>, Port<T>)> for Net<T>
 {
-    fn nodes(&self) -> dot::Nodes<'a, (Index, Agent<T>)> {
+    fn nodes(&self) -> dot::Nodes<'a, (Index<T>, Agent<T>)> {
         Cow::Owned(
             self.agents
                 .clone()
                 .into_iter()
                 .enumerate()
                 .filter_map(|(idx, agent)| {
+                    let idx = T::from_usize(idx);
                     if !self.freed.contains(&Index(idx)) {
                         Some((Index(idx), agent))
                     } else {
@@ -141,11 +142,11 @@ impl<'a, T: Eq + Hash + Storage + Clone + Copy>
         Cow::Owned(edges)
     }
 
-    fn source(&'a self, e: &(Port<T>, Port<T>)) -> (Index, Agent<T>) {
+    fn source(&'a self, e: &(Port<T>, Port<T>)) -> (Index<T>, Agent<T>) {
         (e.0.address(), self.get(e.0.address()).clone())
     }
 
-    fn target(&'a self, e: &(Port<T>, Port<T>)) -> (Index, Agent<T>) {
+    fn target(&'a self, e: &(Port<T>, Port<T>)) -> (Index<T>, Agent<T>) {
         (e.1.address(), self.get(e.1.address()).clone())
     }
 }

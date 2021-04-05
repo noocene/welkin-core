@@ -13,37 +13,44 @@ void main() {
             state.visits_done = 0;
         }
 
-        Index a_addr = needs_visiting[i];
-        Agent a = get(a_addr);
+        Port a_port = port(needs_visiting[i], PRINCIPAL);
+        Agent a = follow(a_port);
 
-        Index initial = a_addr;
+        Port initial = a_port;
 
         while (a.ty == WIRE) {
-            if (a.principal != TEMPORARY && atomicCompSwap(agents[a_addr.data].principal.data, a.principal.data, TEMPORARY.data) == a.principal.data) {
-                // TODO free node
+            if (a.principal != TEMPORARY && atomicCompSwap(agents[a_port.data].principal.data, a.principal.data, TEMPORARY.data) == a.principal.data) {
+                free(index(a_port));
             }
 
-            a_addr = index(a.principal);
+            a_port = a.principal;
 
-            if (a_addr == initial) {
+            if (a_port == initial) {
                 return;
             }
 
-            a = get(a_addr);
+            a = follow(a_port);
         }
 
-        Index b_addr = index(a.principal);
-        Agent b = get(b_addr);
+        Port b_port = a.principal;
+        Agent b = follow(b_port);
 
         while (b.ty == WIRE) {
-            if (b.principal != TEMPORARY && atomicCompSwap(agents[b_addr.data].principal.data, b.principal.data, TEMPORARY.data) == b.principal.data) {
-                // TODO free node
+            if (b.principal != TEMPORARY && atomicCompSwap(agents[b_port.data].principal.data, b.principal.data, TEMPORARY.data) == b.principal.data) {
+                free(index(b_port));
             }
 
-            b_addr = index(b.principal);
-            b = get(b_addr);
+            b_port = b.principal;
+            b = follow(b_port);
         }
 
-        // TODO slot check
+        Index a_index = index(a_port);
+        Index b_index = index(b_port);
+
+        connect_ports(a_port, b_port);
+
+        if (slot(a_port) == PRINCIPAL && slot(b_port) == PRINCIPAL && a_index.data != 0 && b_index.data != 0) {
+            mark_active(index(a_port).data < index(b_port).data ? a_index : b_index);
+        }
     }
 }

@@ -2,13 +2,6 @@ use std::sync::Arc;
 
 use vulkano::{device::Device, OomError};
 
-pub mod clear {
-    vulkano_shaders::shader! {
-        ty: "compute",
-        bytes: "src/clear.comp.spv"
-    }
-}
-
 pub mod redex {
     vulkano_shaders::shader! {
         ty: "compute",
@@ -24,17 +17,15 @@ pub mod visit {
 }
 
 pub struct Kernels {
-    pub clear: clear::Shader,
     pub redex: redex::Shader,
-    pub visit: redex::Shader,
+    pub visit: visit::Shader,
 }
 
 impl Kernels {
     pub fn load(device: Arc<Device>) -> Result<Self, OomError> {
         Ok(Self {
-            clear: clear::Shader::load(device.clone())?,
             redex: redex::Shader::load(device.clone())?,
-            visit: redex::Shader::load(device)?,
+            visit: visit::Shader::load(device)?,
         })
     }
 }

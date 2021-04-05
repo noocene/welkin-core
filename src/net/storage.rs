@@ -7,9 +7,12 @@ mod sealed {
 pub trait Storage: sealed::Sealed {
     const MAX_NODES: usize;
 
-    fn pack(index: usize, slot: Slot) -> Self;
+    fn pack(index: Self, slot: Slot) -> Self;
     fn slot(&self) -> Slot;
-    fn address(&self) -> usize;
+    fn address(&self) -> Self;
+    fn zero() -> Self;
+    fn from_usize(data: usize) -> Self;
+    fn into_usize(self) -> usize;
 }
 
 macro_rules! impl_storage {
@@ -20,7 +23,7 @@ macro_rules! impl_storage {
             impl Storage for $t {
                 const MAX_NODES: usize = ((<$t>::MAX >> 2) + 1) as usize;
 
-                fn pack(index: usize, slot: Slot) -> Self {
+                fn pack(index: Self, slot: Slot) -> Self {
                     use Slot::*;
 
                     let slot: $t = match slot {
@@ -30,6 +33,10 @@ macro_rules! impl_storage {
                     };
 
                     index as $t << 2 | slot
+                }
+
+                fn zero() -> Self {
+                    0
                 }
 
                 fn slot(&self) -> Slot {
@@ -43,8 +50,16 @@ macro_rules! impl_storage {
                     }
                 }
 
-                fn address(&self) -> usize {
-                    (*self >> 2) as usize
+                fn address(&self) -> Self {
+                    (*self >> 2) as Self
+                }
+
+                fn from_usize(data: usize) -> Self {
+                    data as Self
+                }
+
+                fn into_usize(self) -> usize {
+                    self as usize
                 }
             }
         )+

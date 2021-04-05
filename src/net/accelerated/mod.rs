@@ -2,24 +2,21 @@ use std::sync::Arc;
 
 use thiserror::Error;
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
+    buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{
         AutoCommandBufferBuilder, BuildError, CommandBuffer, CommandBufferExecError, DispatchError,
     },
     descriptor::{
         descriptor_set::{
-            PersistentDescriptorSet, PersistentDescriptorSetBuf, PersistentDescriptorSetBuildError,
-            PersistentDescriptorSetError, StdDescriptorPoolAlloc,
+            PersistentDescriptorSet, PersistentDescriptorSetBuildError,
+            PersistentDescriptorSetError,
         },
         pipeline_layout::PipelineLayout,
-        PipelineLayoutAbstract,
+        DescriptorSet, PipelineLayoutAbstract,
     },
     device::{Device, DeviceCreationError, DeviceExtensions, Features, Queue},
     instance::{Instance, InstanceCreationError, InstanceExtensions, PhysicalDevice},
-    memory::{
-        pool::{PotentialDedicatedAllocation, StdMemoryPoolAlloc},
-        DeviceMemoryAllocError,
-    },
+    memory::DeviceMemoryAllocError,
     pipeline::{ComputePipeline, ComputePipelineCreationError},
     sync::{FlushError, GpuFuture},
     OomError,
@@ -27,63 +24,114 @@ use vulkano::{
 
 const BLOCK_SIZE: u32 = 64;
 
-use super::{Agent, AgentType, Index, Net, Port, Slot};
+use super::{Agent, Index, Net};
 
-type DescriptorSet = Arc<
-    PersistentDescriptorSet<
-        (
-            (),
-            PersistentDescriptorSetBuf<
-                Arc<
-                    CpuAccessibleBuffer<
-                        [Agent<u32>],
-                        PotentialDedicatedAllocation<StdMemoryPoolAlloc>,
-                    >,
-                >,
-            >,
-        ),
-        StdDescriptorPoolAlloc,
-    >,
->;
+#[derive(Clone, Copy, Debug)]
+#[repr(C)]
+struct State {
+    active_pairs: u32,
+    active_pairs_done: u32,
+    freed_agents: u32,
+    visits_needed: u32,
+    visits_done: u32,
+    rewrites: u32,
+}
 
 pub struct Accelerated {
-    clear: Arc<ComputePipeline<PipelineLayout<kernels::clear::MainLayout>>>,
-    set: DescriptorSet,
+    redex: Arc<ComputePipeline<PipelineLayout<kernels::redex::MainLayout>>>,
+    visit: Arc<ComputePipeline<PipelineLayout<kernels::visit::MainLayout>>>,
+    set: Arc<dyn DescriptorSet + Sync + Send>,
     queue: Arc<Queue>,
     device: Arc<Device>,
     agents: Arc<CpuAccessibleBuffer<[Agent<u32>]>>,
+    active_agents: Arc<CpuAccessibleBuffer<[Index<u32>]>>,
+    freed_agents: Arc<CpuAccessibleBuffer<[Index<u32>]>>,
+    _needs_visiting: Arc<CpuAccessibleBuffer<[Index<u32>]>>,
+    state: Arc<CpuAccessibleBuffer<State>>,
 }
 
 impl Accelerated {
-    fn clear(&mut self) -> Result<(), AcceleratedError> {
-        let command_buffer = {
-            let mut builder =
-                AutoCommandBufferBuilder::new(self.device.clone(), self.queue.family())?;
+    pub fn reduce_all(&mut self) -> Result<usize, AcceleratedError> {
+        loop {
+            let command_buffer = {
+                let mut builder =
+                    AutoCommandBufferBuilder::new(self.device.clone(), self.queue.family())?;
 
-            builder.dispatch(
-                [
-                    (self.agents.len() as u32 + BLOCK_SIZE - 1) / BLOCK_SIZE,
-                    1,
-                    1,
-                ],
-                self.clear.clone(),
-                self.set.clone(),
-                (),
-                None,
-            )?;
-            builder.build()?
-        };
+                builder.dispatch(
+                    [
+                        ({
+                            let state = self.state.read().unwrap();
+                            state.active_pairs
+                        } as u32
+                            + BLOCK_SIZE
+                            - 1)
+                            / BLOCK_SIZE,
+                        1,
+                        1,
+                    ],
+                    self.redex.clone(),
+                    self.set.clone(),
+                    (),
+                    None,
+                )?;
+                builder.build()?
+            };
 
-        let finished = command_buffer.execute(self.queue.clone())?;
+            let finished = command_buffer.execute(self.queue.clone())?;
 
-        finished.then_signal_fence_and_flush()?.wait(None)?;
+            finished.then_signal_fence_and_flush()?.wait(None)?;
 
-        let content = self.agents.read().unwrap();
-        for (_, val) in content.iter().enumerate() {
-            println!("{:?}", val);
+            let command_buffer = {
+                let mut builder =
+                    AutoCommandBufferBuilder::new(self.device.clone(), self.queue.family())?;
+
+                builder.dispatch(
+                    [
+                        ({
+                            let state = self.state.read().unwrap();
+                            state.visits_needed
+                        } as u32
+                            + BLOCK_SIZE
+                            - 1)
+                            / BLOCK_SIZE,
+                        1,
+                        1,
+                    ],
+                    self.visit.clone(),
+                    self.set.clone(),
+                    (),
+                    None,
+                )?;
+                builder.build()?
+            };
+
+            let finished = command_buffer.execute(self.queue.clone())?;
+
+            finished.then_signal_fence_and_flush()?.wait(None)?;
+
+            let mut state = self.state.write().unwrap();
+
+            println!("{:?}", (*state));
+
+            if state.active_pairs == 0 {
+                let rewrites = state.rewrites;
+                state.rewrites = 0;
+
+                break Ok(rewrites as usize);
+            }
         }
+    }
 
-        Ok(())
+    pub fn into_inner(self) -> Net<u32> {
+        let agents = self.agents.read().unwrap().to_vec();
+        let freed = self.freed_agents.read().unwrap().to_vec();
+        let active = self.active_agents.read().unwrap().to_vec();
+
+        Net {
+            agents,
+            freed,
+            active,
+        }
     }
 }
 
@@ -140,30 +188,70 @@ impl Net<u32> {
 
         let queue = queues.next().ok_or(AcceleratedError::NoSuitableDevice)?;
 
+        let agents_len = self.agents.len();
+        let freed_len = self.freed.len();
+        let active_len = self.active.len();
+
         let agents = CpuAccessibleBuffer::from_iter(
             device.clone(),
             BufferUsage::all(),
             false,
-            vec![Agent::new(
-                Port::new(Index(0), Slot::Principal),
-                Port::new(Index(0), Slot::Principal),
-                Port::new(Index(0), Slot::Principal),
-                AgentType::Epsilon,
-            )]
-            .into_iter(),
+            self.agents.into_iter(),
+        )?;
+
+        let active_agents = CpuAccessibleBuffer::from_iter(
+            device.clone(),
+            BufferUsage::all(),
+            false,
+            self.active.into_iter(),
+        )?;
+
+        let freed_agents = CpuAccessibleBuffer::from_iter(
+            device.clone(),
+            BufferUsage::all(),
+            false,
+            self.freed.into_iter(),
+        )?;
+
+        let _needs_visiting = CpuAccessibleBuffer::from_iter(
+            device.clone(),
+            BufferUsage::all(),
+            false,
+            vec![Index(0); agents_len].into_iter(),
+        )?;
+
+        let state = CpuAccessibleBuffer::from_data(
+            device.clone(),
+            BufferUsage::all(),
+            false,
+            State {
+                active_pairs: active_len as u32,
+                active_pairs_done: 0,
+                freed_agents: freed_len as u32,
+                visits_needed: 0,
+                visits_done: 0,
+                rewrites: 0,
+            },
         )?;
 
         let kernels = kernels::Kernels::load(device.clone())?;
 
-        let clear = Arc::new(ComputePipeline::new(
+        let redex = Arc::new(ComputePipeline::new(
             device.clone(),
-            &kernels.clear.main_entry_point(),
+            &kernels.redex.main_entry_point(),
+            &(),
+            None,
+        )?);
+
+        let visit = Arc::new(ComputePipeline::new(
+            device.clone(),
+            &kernels.visit.main_entry_point(),
             &(),
             None,
         )?);
 
         let set = {
-            let layout = clear
+            let layout = redex
                 .layout()
                 .descriptor_set_layout(0)
                 .ok_or(AcceleratedError::DescriptorSetMissing)?;
@@ -171,20 +259,25 @@ impl Net<u32> {
             Arc::new(
                 PersistentDescriptorSet::start(layout.clone())
                     .add_buffer(agents.clone())?
+                    .add_buffer(active_agents.clone())?
+                    .add_buffer(freed_agents.clone())?
+                    .add_buffer(_needs_visiting.clone())?
+                    .add_buffer(state.clone())?
                     .build()?,
             )
         };
 
-        let mut a = Accelerated {
-            clear,
+        Ok(Accelerated {
+            redex,
+            visit,
             set,
             queue,
+            state,
             device,
+            active_agents,
+            freed_agents,
+            _needs_visiting,
             agents,
-        };
-
-        a.clear()?;
-
-        Ok(a)
+        })
     }
 }

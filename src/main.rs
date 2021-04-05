@@ -21,17 +21,15 @@ fn entry(buffer: String, term: String) -> Result<(), String> {
 
     let entry = Term::Reference(term).stratified(&definitions).map_err(e)?;
 
-    // entry.normalize().map_err(e)?;
-
-    let mut entry = entry.into_net::<Net<u32>>().unwrap();
+    let entry = entry.into_net::<Net<u32>>().unwrap();
 
     let mut entry = entry.into_accelerated().unwrap();
-    // entry.reduce_all();
-    // let entry = entry.into_inner();
+    entry.reduce_all().unwrap();
+    let entry = entry.into_inner();
 
-    // entry
-    //     .render_to(&mut std::fs::File::create("example1.dot").unwrap())
-    //     .unwrap();
+    entry
+        .render_to(&mut std::fs::File::create("example1.dot").unwrap())
+        .unwrap();
 
     Ok(())
 }

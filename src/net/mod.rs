@@ -1,4 +1,7 @@
-use std::{fmt::Debug, hash::Hash};
+use std::{
+    fmt::{Debug, Display},
+    hash::Hash,
+};
 
 mod storage;
 pub(crate) use storage::Storage;
@@ -27,7 +30,7 @@ pub trait NetBuilder {
     fn build(self, root: Self::Port) -> Self::Net;
 }
 
-impl<T: Storage + Clone + Eq> NetBuilder for Net<T> {
+impl<T: Storage + Clone + Copy + Eq> NetBuilder for Net<T> {
     type Net = Self;
     type Port = Port<T>;
 
@@ -49,13 +52,13 @@ impl<T: Storage + Clone + Eq> NetBuilder for Net<T> {
     }
 
     fn build(mut self, root: Self::Port) -> Self::Net {
-        self.connect(self.get(Index(0)).ports().right, root);
+        self.connect(self.get(Index(T::zero())).ports().right, root);
         self.bind_unbound();
         self
     }
 }
 
-impl<T: Storage> PortExt for Port<T> {
+impl<T: Storage + PartialEq> PortExt for Port<T> {
     fn is_root(&self) -> bool {
         self.address().is_root()
     }
@@ -168,11 +171,11 @@ impl<T: Storage + Debug> Debug for Port<T> {
 }
 
 impl<T: Storage> Port<T> {
-    fn new(node: Index, slot: Slot) -> Self {
+    fn new(node: Index<T>, slot: Slot) -> Self {
         Port(T::pack(node.0, slot))
     }
 
-    pub(crate) fn address(&self) -> Index {
+    pub(crate) fn address(&self) -> Index<T> {
         Index(self.0.address())
     }
 
@@ -183,26 +186,26 @@ impl<T: Storage> Port<T> {
 
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub struct Index(usize);
+pub struct Index<T>(T);
 
-impl Index {
+impl<T: PartialEq + Storage> Index<T> {
     pub(crate) fn is_root(&self) -> bool {
-        self.0 == 0
+        self.0 == T::zero()
     }
 }
 
 #[derive(Debug)]
 pub struct Net<T: Storage> {
     agents: Vec<Agent<T>>,
-    freed: Vec<Index>,
-    active: Vec<Index>,
+    freed: Vec<Index<T>>,
+    active: Vec<Index<T>>,
 }
 
-impl<T: Storage + Clone> Net<T> {
+impl<T: Storage + Clone + Copy> Net<T> {
     #[cfg(feature = "graphviz")]
     pub fn render_to<W: std::io::Write>(&self, output: &mut W) -> std::io::Result<()>
     where
-        T: Copy + Eq + Hash,
+        T: Copy + Eq + Hash + Display + PartialOrd,
     {
         dot::render(self, output)
     }
@@ -224,7 +227,7 @@ impl<T: Storage + Clone> Net<T> {
             .freed
             .pop()
             .map(|idx| (idx, true))
-            .unwrap_or_else(|| (Index(self.agents.len()), false));
+            .unwrap_or_else(|| (Index(T::from_usize(self.agents.len())), false));
 
         let (principal, left, right) = (
             Port::new(idx, Slot::Principal),
@@ -235,7 +238,7 @@ impl<T: Storage + Clone> Net<T> {
         let agent = Agent::new(principal, left, right, ty);
 
         if extant {
-            self.agents[idx.0] = agent;
+            self.agents[idx.0.into_usize()] = agent;
         } else {
             self.agents.push(agent);
         }
@@ -243,12 +246,12 @@ impl<T: Storage + Clone> Net<T> {
         self.get(idx)
     }
 
-    pub fn get(&self, index: Index) -> &Agent<T> {
-        &self.agents[index.0]
+    pub fn get(&self, index: Index<T>) -> &Agent<T> {
+        &self.agents[index.0.into_usize()]
     }
 
-    pub fn get_mut(&mut self, index: Index) -> &mut Agent<T> {
-        &mut self.agents[index.0]
+    pub fn get_mut(&mut self, index: Index<T>) -> &mut Agent<T> {
+        &mut self.agents[index.0.into_usize()]
     }
 
     pub fn follow(&self, port: Port<T>) -> Port<T> {
@@ -283,7 +286,7 @@ impl<T: Storage + Clone> Net<T> {
         }
     }
 
-    fn free(&mut self, address: Index) {
+    fn free(&mut self, address: Index<T>) {
         self.freed.push(address);
     }
 
@@ -324,7 +327,7 @@ impl<T: Storage + Clone> Net<T> {
         }
     }
 
-    fn rewrite(&mut self, x: Index, y: Index) {
+    fn rewrite(&mut self, x: Index<T>, y: Index<T>) {
         use AgentType::Epsilon;
 
         let x_ty = self.get(x).ty();

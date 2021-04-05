@@ -27,7 +27,7 @@ struct Index {
     u32 data;
 };
 
-layout(binding = 0) buffer Agents {
+layout(set = 0, binding = 0) buffer Agents {
    Agent agents[];
 };
 
@@ -36,7 +36,7 @@ Index index(Port port) {
 }
 
 Agent follow(Port port) {
-    return agents[port.data >> 2];
+    return agents[index(port).data];
 }
 
 Agent get(Index index) {
@@ -55,23 +55,25 @@ Slot slot(Port port) {
     return Slot(port.data & 3);
 }
 
-layout(binding = 0) buffer ActiveAgents {
+layout(set = 0, binding = 1) buffer ActiveAgents {
    Index active_agents[];
 };
 
-layout(binding = 0) buffer FreedAgents {
+layout(set = 0, binding = 2) buffer FreedAgents {
    Index freed_agents[];
 };
 
-layout(binding = 0) buffer NeedsVisitingAgents {
+layout(set = 0, binding = 3) buffer NeedsVisitingAgents {
    Index needs_visiting[];
 };
 
-layout(binding = 0) buffer State {
+layout(set = 0, binding = 4) buffer State {
     u32 active_pairs;
+    u32 active_pairs_done;
     u32 freed_agents;
     u32 visits_needed;
     u32 visits_done;
+    u32 rewrites;
 } state;
 
 Port port(Index index, Slot slot) {
@@ -105,3 +107,40 @@ const Agent FREE = Agent(
     FREE_PORT,
     WIRE
 );
+
+void mark_for_visit(Index index) {
+    needs_visiting[atomicAdd(state.visits_needed, 1)] = index;
+}
+
+void mark_active(Index index) {
+    active_agents[atomicAdd(state.active_pairs, 1)] = index;
+}
+
+void free(Index index) {
+    freed_agents[atomicAdd(state.freed_agents, 1)] = index;
+}
+
+void connect_ports(Port a, Port b) {
+    switch (slot(a).data) {
+        case PRINCIPAL.data:
+            agents[index(a).data].principal = b;
+            break;
+        case LEFT.data:
+            agents[index(a).data].left = b;
+            break;
+        case RIGHT.data:
+            agents[index(a).data].right = b;
+            break;
+    }
+    switch (slot(b).data) {
+        case PRINCIPAL.data:
+            agents[index(b).data].principal = a;
+            break;
+        case LEFT.data:
+            agents[index(b).data].left = a;
+            break;
+        case RIGHT.data:
+            agents[index(b).data].right = a;
+            break;
+    }
+}

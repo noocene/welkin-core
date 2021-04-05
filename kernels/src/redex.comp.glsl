@@ -12,6 +12,8 @@ void main() {
         Agent b = get(b_addr);
 
         if (a.ty != WIRE && atomicCompSwap(agents[a_addr.data].ty.data, a.ty.data, WIRE.data) == a.ty.data) {
+            atomicAdd(state.rewrites, 1);
+
             if (!same_ty(a, b)) {
                 Index p_addr = alloc();
                 Index q_addr = alloc();
@@ -44,7 +46,10 @@ void main() {
                     b.ty
                 ));
 
-                // TODO handle visit
+                mark_for_visit(index(a.left));
+                mark_for_visit(index(a.right));
+                mark_for_visit(index(b.left));
+                mark_for_visit(index(b.right));
             } else {
                 replace(a_addr, Agent(
                     a.principal,
@@ -59,8 +64,15 @@ void main() {
                     WIRE
                 ));
 
-                // TODO handle visit
+                mark_for_visit(index(a.left));
+                mark_for_visit(index(a.right));
             }
+        }
+
+        if (atomicAdd(state.active_pairs_done, 1) == state.active_pairs - 1) {
+            state.active_pairs_done = 0;
+            state.active_pairs = 0;
+            state.freed_agents = state.freed_agents > 0x80000000 ? 0 : state.freed_agents;
         }
     }
 }
