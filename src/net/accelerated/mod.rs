@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+#[cfg(feature = "renderdoc")]
+use rdoc::{RenderDoc, V120};
 use thiserror::Error;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
@@ -24,11 +26,12 @@ use vulkano::{
 
 const BLOCK_SIZE: u32 = 64;
 
-use super::{Agent, Index, Net};
+use super::{Agent, AgentType, Index, Net, Port, Slot};
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 struct State {
+    agents: u32,
     active_pairs: u32,
     active_pairs_done: u32,
     freed_agents: u32,
@@ -48,11 +51,20 @@ pub struct Accelerated {
     freed_agents: Arc<CpuAccessibleBuffer<[Index<u32>]>>,
     _needs_visiting: Arc<CpuAccessibleBuffer<[Index<u32>]>>,
     state: Arc<CpuAccessibleBuffer<State>>,
+    #[cfg(feature = "renderdoc")]
+    renderdoc: RenderDoc<V120>,
 }
 
 impl Accelerated {
     pub fn reduce_all(&mut self) -> Result<usize, AcceleratedError> {
-        loop {
+        #[cfg(feature = "renderdoc")]
+        {
+            self.renderdoc
+                .start_frame_capture(std::ptr::null(), std::ptr::null());
+        }
+
+        let a = loop {
+            // break Ok(0);
             let command_buffer = {
                 let mut builder =
                     AutoCommandBufferBuilder::new(self.device.clone(), self.queue.family())?;
@@ -111,21 +123,34 @@ impl Accelerated {
 
             let mut state = self.state.write().unwrap();
 
-            println!("{:?}", (*state));
-
             if state.active_pairs == 0 {
                 let rewrites = state.rewrites;
                 state.rewrites = 0;
 
                 break Ok(rewrites as usize);
             }
+        };
+
+        #[cfg(feature = "renderdoc")]
+        {
+            self.renderdoc
+                .end_frame_capture(std::ptr::null(), std::ptr::null());
+            self.renderdoc.launch_replay_ui(true, None).unwrap();
+            loop {}
         }
+
+        a
     }
 
     pub fn into_inner(self) -> Net<u32> {
-        let agents = self.agents.read().unwrap().to_vec();
-        let freed = self.freed_agents.read().unwrap().to_vec();
-        let active = self.active_agents.read().unwrap().to_vec();
+        let mut agents = self.agents.read().unwrap().to_vec();
+        let mut freed = self.freed_agents.read().unwrap().to_vec();
+        let mut active = self.active_agents.read().unwrap().to_vec();
+
+        let state = &*self.state.read().unwrap();
+        freed.truncate(state.freed_agents as usize);
+        active.truncate(state.active_pairs as usize);
+        agents.truncate(state.agents as usize);
 
         Net {
             agents,
@@ -167,7 +192,11 @@ pub enum AcceleratedError {
 
 impl Net<u32> {
     pub fn into_accelerated(self) -> Result<Accelerated, AcceleratedError> {
+        #[cfg(feature = "renderdoc")]
+        let renderdoc = RenderDoc::<V120>::new().unwrap();
+
         let instance = Instance::new(None, &InstanceExtensions::none(), None)?;
+
         let physical = PhysicalDevice::enumerate(&instance)
             .next()
             .ok_or(AcceleratedError::NoSuitableDevice)?;
@@ -192,39 +221,53 @@ impl Net<u32> {
         let freed_len = self.freed.len();
         let active_len = self.active.len();
 
-        let agents = CpuAccessibleBuffer::from_iter(
-            device.clone(),
-            BufferUsage::all(),
-            false,
-            self.agents.into_iter(),
-        )?;
+        let usage = BufferUsage::all();
 
-        let active_agents = CpuAccessibleBuffer::from_iter(
-            device.clone(),
-            BufferUsage::all(),
-            false,
-            self.active.into_iter(),
-        )?;
+        let mut agents = self.agents;
+        agents.extend(
+            vec![
+                Agent::new(
+                    Port::new(Index(0), Slot::Principal),
+                    Port::new(Index(0), Slot::Principal),
+                    Port::new(Index(0), Slot::Principal),
+                    AgentType::Wire
+                );
+                agents_len
+            ]
+            .into_iter(),
+        );
 
-        let freed_agents = CpuAccessibleBuffer::from_iter(
-            device.clone(),
-            BufferUsage::all(),
-            false,
-            self.freed.into_iter(),
-        )?;
+        let mut active = self.active;
+        active.extend(vec![Index(0); agents_len]);
+
+        let agents =
+            CpuAccessibleBuffer::from_iter(device.clone(), usage, false, agents.into_iter())?;
+
+        let active_agents =
+            CpuAccessibleBuffer::from_iter(device.clone(), usage, false, active.into_iter())?;
+
+        let mut freed = self.freed;
+        freed.extend(vec![
+            Index(std::u32::MAX);
+            agents_len.saturating_sub(freed_len)
+        ]);
+
+        let freed_agents =
+            CpuAccessibleBuffer::from_iter(device.clone(), usage, false, freed.into_iter())?;
 
         let _needs_visiting = CpuAccessibleBuffer::from_iter(
             device.clone(),
-            BufferUsage::all(),
+            usage,
             false,
             vec![Index(0); agents_len].into_iter(),
         )?;
 
         let state = CpuAccessibleBuffer::from_data(
             device.clone(),
-            BufferUsage::all(),
+            usage,
             false,
             State {
+                agents: agents_len as u32,
                 active_pairs: active_len as u32,
                 active_pairs_done: 0,
                 freed_agents: freed_len as u32,
@@ -271,6 +314,8 @@ impl Net<u32> {
             redex,
             visit,
             set,
+            #[cfg(feature = "renderdoc")]
+            renderdoc,
             queue,
             state,
             device,

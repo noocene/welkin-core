@@ -1,9 +1,7 @@
-use welkin_core::{
-    net::Net,
-    term::{typed::Definitions, ParseError, Term},
-};
-
 use std::{collections::HashMap, fmt::Debug, fs::read_to_string, io, process::exit};
+#[cfg(feature = "graphviz")]
+use welkin_core::net::Net;
+use welkin_core::term::{typed::Definitions, ParseError, Term};
 
 fn e<E: Debug>(e: E) -> String {
     format!("{:?}", e)
@@ -21,15 +19,44 @@ fn entry(buffer: String, term: String) -> Result<(), String> {
 
     let entry = Term::Reference(term).stratified(&definitions).map_err(e)?;
 
+    #[cfg(feature = "graphviz")]
     let entry = entry.into_net::<Net<u32>>().unwrap();
 
-    let mut entry = entry.into_accelerated().unwrap();
-    entry.reduce_all().unwrap();
-    let entry = entry.into_inner();
+    #[cfg(feature = "accelerated")]
+    let entry = {
+        let mut entry = entry.into_accelerated().unwrap();
+        println!("DONE in {} rewrites", entry.reduce_all().unwrap());
+        entry.into_inner()
+    };
 
-    entry
-        .render_to(&mut std::fs::File::create("example1.dot").unwrap())
-        .unwrap();
+    #[cfg(all(not(feature = "accelerated"), feature = "graphviz"))]
+    let entry = {
+        let mut entry = entry;
+        let mut size = 1;
+        let mut idx = 0;
+        while size > 0 {
+            size = entry.reduce(Some(1));
+            entry
+                .render_to(&mut std::fs::File::create(&format!("ex{}.dot", idx)).unwrap())
+                .unwrap();
+            idx += 1;
+        }
+        entry
+    };
+
+    #[cfg(feature = "graphviz")]
+    {
+        entry
+            .render_to(&mut std::fs::File::create("example1.dot").unwrap())
+            .unwrap();
+    }
+
+    #[cfg(not(feature = "graphviz"))]
+    {
+        let mut entry = entry;
+        entry.normalize().unwrap();
+        println!("{:?}", entry.into_inner());
+    }
 
     Ok(())
 }
@@ -37,7 +64,7 @@ fn entry(buffer: String, term: String) -> Result<(), String> {
 fn main() -> io::Result<()> {
     let mut args = std::env::args().skip(1);
 
-    if let (Some(file), Some(term)) = (Some(String::from("example.wc")), Some("main".into())) {
+    if let (Some(file), Some(term)) = (args.next(), args.next()) {
         let buffer = read_to_string(file)?;
         if let Err(e) = entry(buffer, term) {
             eprintln!("{}", e);

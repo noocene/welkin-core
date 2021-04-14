@@ -9,6 +9,7 @@ combine = { version = "4.5.2", optional = true }
 derivative = "2.2.0"
 dot = { git = "https://github.com/syntacticsugarglider/dot-rust", branch = "main", optional = true }
 kernels = { optional = true, path = "./kernels" }
+rdoc = { version = "0.10.1", optional = true, package = "renderdoc" }
 serde = { version = "1.0.125", features = ["derive"] }
 thiserror = "1.0.24"
 vulkano = { version = "0.22.0", optional = true }
@@ -17,4 +18,5 @@ vulkano = { version = "0.22.0", optional = true }
 parser = ["combine"]
 graphviz = ["dot"]
 accelerated = ["vulkano", "kernels"]
+renderdoc = ["rdoc"]
 default = ["parser"]

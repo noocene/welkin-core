@@ -1,7 +1,6 @@
-use std::{
-    fmt::{Debug, Display},
-    hash::Hash,
-};
+#[cfg(feature = "graphviz")]
+use std::fmt::Display;
+use std::{fmt::Debug, hash::Hash};
 
 mod storage;
 pub(crate) use storage::Storage;
@@ -30,7 +29,7 @@ pub trait NetBuilder {
     fn build(self, root: Self::Port) -> Self::Net;
 }
 
-impl<T: Storage + Clone + Copy + Eq> NetBuilder for Net<T> {
+impl<T: Storage + Clone + Copy + Eq + PartialOrd> NetBuilder for Net<T> {
     type Net = Self;
     type Port = Port<T>;
 
@@ -52,7 +51,7 @@ impl<T: Storage + Clone + Copy + Eq> NetBuilder for Net<T> {
     }
 
     fn build(mut self, root: Self::Port) -> Self::Net {
-        self.connect(self.get(Index(T::zero())).ports().right, root);
+        self.connect(self.get(Index(T::zero())).ports().principal, root);
         self.bind_unbound();
         self
     }
@@ -73,15 +72,15 @@ pub enum AgentType {
     Root = 3,
 
     #[doc(hidden)]
-    WIRE = 0xFFFFFFFF,
+    Wire = 0xFFFFFFFF,
 }
 
 #[derive(Debug, Clone)]
 #[repr(C)]
 pub struct Agent<T: Storage> {
+    principal: Port<T>,
     left: Port<T>,
     right: Port<T>,
-    principal: Port<T>,
     ty: AgentType,
 }
 
@@ -210,15 +209,18 @@ impl<T: Storage + Clone + Copy> Net<T> {
         dot::render(self, output)
     }
 
-    pub fn new() -> (Self, Port<T>) {
+    pub fn new() -> (Self, Port<T>)
+    where
+        T: PartialEq + PartialOrd,
+    {
         let mut net = Net {
             agents: vec![],
             freed: vec![],
             active: vec![],
         };
         let root = net.add(AgentType::Root).ports();
-        net.connect(root.principal, root.left);
-        let p = root.right;
+        net.connect(root.left, root.right);
+        let p = root.principal;
         (net, p)
     }
 
@@ -258,11 +260,21 @@ impl<T: Storage + Clone + Copy> Net<T> {
         self.get_agent(&port).slot(port.slot())
     }
 
-    pub fn connect(&mut self, a: Port<T>, b: Port<T>) {
+    pub fn connect(&mut self, a: Port<T>, b: Port<T>)
+    where
+        T: PartialEq + PartialOrd,
+    {
         use Slot::Principal;
 
-        if a.slot() == Principal && b.slot() == Principal {
-            self.active.push(a.address());
+        if a.slot() == Principal
+            && b.slot() == Principal
+            && !(a.address().is_root() || b.address().is_root())
+        {
+            self.active.push(if a.address().0 < b.address().0 {
+                a.address()
+            } else {
+                b.address()
+            });
         }
 
         let a_agent = self.get_mut(a.address());
@@ -294,7 +306,10 @@ impl<T: Storage + Clone + Copy> Net<T> {
         self.get(x.address())
     }
 
-    pub fn reduce(&mut self, max_rewrites: Option<usize>) -> usize {
+    pub fn reduce(&mut self, max_rewrites: Option<usize>) -> usize
+    where
+        T: PartialEq + PartialOrd,
+    {
         let mut rewrites = 0;
 
         while let Some(a) = self.active.pop() {
@@ -310,13 +325,16 @@ impl<T: Storage + Clone + Copy> Net<T> {
         rewrites
     }
 
-    pub fn reduce_all(&mut self) -> usize {
+    pub fn reduce_all(&mut self) -> usize
+    where
+        T: PartialEq + PartialOrd,
+    {
         self.reduce(None)
     }
 
     pub(crate) fn bind_unbound(&mut self)
     where
-        T: Eq,
+        T: Eq + PartialOrd,
     {
         for i in 0..self.agents.len() {
             let ports = self.agents[i].ports();
@@ -327,7 +345,10 @@ impl<T: Storage + Clone + Copy> Net<T> {
         }
     }
 
-    fn rewrite(&mut self, x: Index<T>, y: Index<T>) {
+    fn rewrite(&mut self, x: Index<T>, y: Index<T>)
+    where
+        T: PartialEq + PartialOrd,
+    {
         use AgentType::Epsilon;
 
         let x_ty = self.get(x).ty();

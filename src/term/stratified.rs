@@ -31,6 +31,7 @@ pub enum StratificationError<T> {
     AffineUsedInBox(Term<T>),
     DupNonUnitBoxMultiplicity(Term<T>),
     UndefinedReference(#[derivative(Debug(format_with = "debug_reference"))] T),
+    ErasedUsed(Term<T>),
 }
 
 impl<T> Term<T> {

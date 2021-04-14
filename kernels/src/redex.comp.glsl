@@ -34,15 +34,15 @@ void main() {
                 ));
 
                 replace(r_addr, Agent(
-                    a.left,
-                    port(p_addr, LEFT),
-                    port(q_addr, LEFT),
-                    b.ty
-                ));
-                replace(r_addr, Agent(
                     a.right,
                     port(p_addr, RIGHT),
                     port(q_addr, RIGHT),
+                    b.ty
+                ));
+                replace(s_addr, Agent(
+                    a.left,
+                    port(p_addr, LEFT),
+                    port(q_addr, LEFT),
                     b.ty
                 ));
 
@@ -78,7 +78,7 @@ void main() {
                 ));
 
                 mark_for_visit(index(a.left));
-                mark_for_visit(index(a.right));
+                mark_for_visit(index(b.right));
             }
         }
 

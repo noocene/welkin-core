@@ -76,7 +76,7 @@ impl<'a, T: Storage + Display + Clone + Copy>
                 Delta => "&delta;",
                 Zeta => "&zeta;",
 
-                _ => "WIRE",
+                Wire => "WIRE",
             },
             n.0 .0
         )))
@@ -113,6 +113,13 @@ impl<'a, T: PartialOrd + Eq + Hash + Storage + Clone + Copy>
             .agents
             .clone()
             .into_iter()
+            .enumerate()
+            .filter_map(|(idx, a)| {
+                if self.freed.contains(&Index(T::from_usize(idx))) {
+                    return None;
+                }
+                Some(a)
+            })
             .map(|agent| {
                 let ports = agent.ports();
                 vec![ports.principal, ports.left, ports.right]
@@ -129,6 +136,9 @@ impl<'a, T: PartialOrd + Eq + Hash + Storage + Clone + Copy>
             .collect::<HashSet<_>>()
             .into_iter()
             .filter(|(a, b)| {
+                if self.freed.contains(&a.address()) || self.freed.contains(&b.address()) {
+                    return false;
+                }
                 // don't render intended self-referential ports
                 if a.address() == b.address() && {
                     let ty = self.get(a.address()).ty();
@@ -136,7 +146,7 @@ impl<'a, T: PartialOrd + Eq + Hash + Storage + Clone + Copy>
                 } {
                     return false;
                 }
-                !(self.freed.contains(&a.address()) || self.freed.contains(&b.address()))
+                return true;
             })
             .collect::<Vec<_>>();
         Cow::Owned(edges)

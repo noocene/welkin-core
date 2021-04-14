@@ -68,6 +68,7 @@ layout(set = 0, binding = 3) buffer NeedsVisitingAgents {
 };
 
 layout(set = 0, binding = 4) buffer State {
+    u32 agents;
     u32 active_pairs;
     u32 active_pairs_done;
     u32 freed_agents;
@@ -96,7 +97,7 @@ const Ty WIRE = Ty(0xFFFFFFFF);
 
 Index alloc() {
     u32 pos = atomicAdd(state.freed_agents, -1);
-    return pos > 0 && pos < 0x80000000 ? freed_agents[pos - 1] : Index(atomicAdd(state.freed_agents, 1));
+    return pos > 0 && pos < 0x80000000 ? freed_agents[pos - 1] : Index(atomicAdd(state.agents, 1));
 }
 
 const Port FREE_PORT = Port(0xFFFFFFFF << 2);
@@ -143,4 +144,21 @@ void connect_ports(Port a, Port b) {
             agents[index(b).data].right = a;
             break;
     }
+}
+
+Port through(Port port) {
+    Agent agent = follow(port);
+    Port ret = TEMPORARY;
+    switch (slot(port).data) {
+        case PRINCIPAL.data:
+            ret = agent.principal;
+            break;
+        case LEFT.data:
+            ret = agent.left;
+            break;
+        case RIGHT.data:
+            ret = agent.right;
+            break;
+    }
+    return ret;
 }

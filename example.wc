@@ -50,6 +50,10 @@ if : _,A:* _,B:* +,bool:Bool +,:A +,:B ([typeif A B] bool) = /A /B \bool \a \b
     ([bool \self ([typeif A B] self)] a b)
 
 id : _,A:* +,a:A A = /A \x x
+idt : * = +,:Bool Bool
+bid : idt = \x x
+
+a : +,:idt +,:idt idt = \x \y y
 
 dup : _,A:* +,:
         !+,:A A
@@ -57,4 +61,6 @@ dup : _,A:* +,:
     : X = x
     . \a (X (X a))
 
-main : Bool = (not true)
+main : !idt =
+    : A = .bid
+    .(a A A)
