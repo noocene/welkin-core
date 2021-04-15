@@ -61,14 +61,16 @@ impl<U, V: Primitives<U>, T: TypedDefinitions<U, V>> Definitions<U, V> for T {
     }
 }
 
-impl<T> Term<T> {
-    pub fn check<U: TypedDefinitions<T>>(
+impl<T, V: Primitives<T>> Term<T, V> {
+    pub fn check<U: TypedDefinitions<T, V>>(
         &self,
-        ty: &Term<T>,
+        ty: &Term<T, V>,
         definitions: &U,
-    ) -> Result<(), AnalysisError<T>>
+    ) -> Result<(), AnalysisError<T, V>>
     where
-        T: Clone + Eq,
+        T: Clone,
+        V: Clone,
+        Term<T, V>: PartialEq,
     {
         use Term::*;
 
@@ -151,12 +153,14 @@ impl<T> Term<T> {
         })
     }
 
-    pub fn infer<U: TypedDefinitions<T>>(
+    pub fn infer<U: TypedDefinitions<T, V>>(
         &self,
         definitions: &U,
-    ) -> Result<Term<T>, AnalysisError<T>>
+    ) -> Result<Term<T, V>, AnalysisError<T, V>>
     where
-        T: Clone + Eq,
+        T: Clone,
+        V: Clone,
+        Term<T, V>: PartialEq,
     {
         use Term::*;
 
@@ -257,6 +261,8 @@ impl<T> Term<T> {
                 Universe
             }
             Put(expression) => Wrap(Box::new(expression.infer(definitions)?)),
+
+            Primitive(primitive) => primitive.ty().into_owned(),
 
             _ => Err(AnalysisError::Impossible(self.clone()))?,
         })

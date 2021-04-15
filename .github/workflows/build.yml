@@ -16,12 +16,12 @@ jobs:
         rustup default stable
         rustup update
     - name: Build
-      run: cargo build --lib
+      run: cargo build
     - name: Build with hardware acceleration
-      run: cargo build --lib --features accelerated
+      run: cargo build --features accelerated
     - name: Build with graphviz support
-      run: cargo build --lib --features graphviz
+      run: cargo build --features graphviz
     - name: Build with all features enabled
-      run: cargo build --lib --features graphviz,accelerated
+      run: cargo build --features graphviz,accelerated
     - name: Run tests
       run: cargo test

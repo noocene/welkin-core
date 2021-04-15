@@ -2,6 +2,7 @@ use std::{borrow::Cow, fmt::Debug};
 
 mod eq;
 mod index;
+mod map_primitive;
 mod map_reference;
 mod normalize;
 #[cfg(feature = "parser")]
@@ -32,12 +33,7 @@ impl Show for None {
 }
 
 pub trait Primitives<T> {
-    fn argument_ty(&self) -> Cow<'_, Term<T, Self>>
-    where
-        T: Clone,
-        Self: Clone;
-
-    fn return_ty(&self, argument: &Term<T, Self>) -> Cow<'_, Term<T, Self>>
+    fn ty(&self) -> Cow<'_, Term<T, Self>>
     where
         T: Clone,
         Self: Clone;
@@ -48,14 +44,7 @@ pub trait Primitives<T> {
 }
 
 impl<T> Primitives<T> for None {
-    fn argument_ty(&self) -> Cow<'_, Term<T>>
-    where
-        T: Clone,
-    {
-        panic!()
-    }
-
-    fn return_ty(&self, _: &Term<T>) -> Cow<'_, Term<T>>
+    fn ty(&self) -> Cow<'_, Term<T>>
     where
         T: Clone,
     {

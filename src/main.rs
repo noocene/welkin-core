@@ -1,10 +1,9 @@
 use std::{collections::HashMap, fmt::Debug, fs::read_to_string, io, process::exit};
 #[cfg(any(feature = "graphviz", feature = "accelerated"))]
 use welkin_core::net::Net;
-use welkin_core::{
-    net::{Index, VisitNetExt},
-    term::{typed::Definitions, ParseError, Term},
-};
+#[cfg(feature = "graphviz")]
+use welkin_core::net::{Index, VisitNetExt};
+use welkin_core::term::{typed::Definitions, ParseError, Term};
 
 fn e<E: Debug>(e: E) -> String {
     format!("{:?}", e)

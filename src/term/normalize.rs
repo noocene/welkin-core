@@ -130,7 +130,7 @@ impl<T, V: Primitives<T>> Term<T, V> {
         self.substitute(Index::top(), term)
     }
 
-    pub(crate) fn normalize<U: Definitions<T, V>>(
+    pub fn normalize<U: Definitions<T, V>>(
         &mut self,
         definitions: &U,
     ) -> Result<(), NormalizationError>
@@ -202,6 +202,9 @@ impl<T, V: Primitives<T>> Term<T, V> {
                 } else {
                     match *function {
                         Put(_) => Err(NormalizationError::InvalidApplication)?,
+                        Primitive(primitive) => {
+                            *self = primitive.apply(argument);
+                        }
                         Duplicate { body, expression } => {
                             let mut argument = argument.clone();
                             argument.shift_top();
@@ -226,10 +229,8 @@ impl<T, V: Primitives<T>> Term<T, V> {
                     }
                 }
             }
-            Variable(_) => {}
-            Primitive(_) => todo!(),
+            Variable(_) | Primitive(_) | Universe => {}
 
-            Universe => {}
             Wrap(term) => {
                 term.normalize(definitions)?;
             }
