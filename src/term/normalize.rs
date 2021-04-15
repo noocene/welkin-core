@@ -66,7 +66,7 @@ impl<T, V: Primitives<T>> Term<T, V> {
         self.substitute(variable.child(), &term)
     }
 
-    pub(crate) fn substitute(&mut self, variable: Index, term: &Term<T, V>)
+    pub fn substitute(&mut self, variable: Index, term: &Term<T, V>)
     where
         T: Clone,
         V: Clone,
@@ -122,7 +122,7 @@ impl<T, V: Primitives<T>> Term<T, V> {
         }
     }
 
-    pub(crate) fn substitute_top(&mut self, term: &Term<T, V>)
+    pub fn substitute_top(&mut self, term: &Term<T, V>)
     where
         T: Clone,
         V: Clone,
