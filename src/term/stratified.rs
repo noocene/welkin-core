@@ -1,3 +1,5 @@
+use std::mem::replace;
+
 use derivative::Derivative;
 
 use crate::convert::{NetBuilderExt, NetError};
@@ -12,7 +14,11 @@ impl<'a, T, U: Definitions<T>> Stratified<'a, T, U> {
     where
         T: Clone,
     {
-        self.0.normalize(self.1)
+        self.0.normalize(self.1)?;
+        while let Term::Put(term) = &mut self.0 {
+            self.0 = replace(term, Term::Universe);
+        }
+        Ok(())
     }
 
     pub fn into_inner(self) -> Term<T> {

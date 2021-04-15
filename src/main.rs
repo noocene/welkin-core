@@ -1,5 +1,5 @@
 use std::{collections::HashMap, fmt::Debug, fs::read_to_string, io, process::exit};
-#[cfg(feature = "graphviz")]
+#[cfg(any(feature = "graphviz", feature = "accelerated"))]
 use welkin_core::net::Net;
 use welkin_core::{
     net::Index,
@@ -23,7 +23,7 @@ fn entry(buffer: String, term: String) -> Result<(), String> {
 
     let entry = Term::Reference(term).stratified(&definitions).map_err(e)?;
 
-    #[cfg(feature = "graphviz")]
+    #[cfg(any(feature = "graphviz", feature = "accelerated"))]
     let entry = entry.into_net::<Net<u32>>().unwrap();
 
     #[cfg(feature = "accelerated")]
@@ -40,15 +40,18 @@ fn entry(buffer: String, term: String) -> Result<(), String> {
         entry
     };
 
-    #[cfg(feature = "graphviz")]
+    #[cfg(any(feature = "graphviz", feature = "accelerated"))]
     let term: Term<String> = {
-        entry
-            .render_to(&mut std::fs::File::create("example1.dot").unwrap())
-            .unwrap();
+        #[cfg(feature = "graphviz")]
+        {
+            entry
+                .render_to(&mut std::fs::File::create("example1.dot").unwrap())
+                .unwrap();
+        }
         entry.read_term(entry.get(Index(0)).ports().principal)
     };
 
-    #[cfg(not(feature = "graphviz"))]
+    #[cfg(not(any(feature = "graphviz", feature = "accelerated")))]
     let term = {
         let mut entry = entry;
         entry.normalize().unwrap();

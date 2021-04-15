@@ -1,0 +1,92 @@
+use std::collections::HashMap;
+
+use accelerated::normalize_accelerated;
+use welkin_core::{
+    net::{Index, Net},
+    term::{untyped::Definitions, Definitions as Defs, Term},
+    VisitNetExt,
+};
+
+#[cfg(feature = "accelerated")]
+mod accelerated {
+    use welkin_core::net::Net;
+
+    pub fn normalize_accelerated(net: Net<u32>) -> Net<u32> {
+        let mut net = net.into_accelerated().unwrap();
+        net.reduce_all().unwrap();
+        net.into_inner()
+    }
+}
+
+#[derive(Clone)]
+pub struct TestDefinitions(HashMap<String, Term<String>>);
+
+impl Defs<String> for TestDefinitions {
+    fn get(&self, name: &String) -> Option<&Term<String>> {
+        self.0.get(name)
+    }
+}
+
+fn round_trip(term: &str) {
+    let definitions: Definitions = term.trim().parse().unwrap();
+    let definitions = definitions.terms.into_iter().collect::<HashMap<_, _>>();
+    let entry = definitions.get("entry").cloned().unwrap();
+    let definitions = TestDefinitions(definitions);
+    let entry = entry.stratified(&definitions).unwrap();
+    let mut normalized = entry.clone();
+    normalized.normalize().unwrap();
+    let normalized = normalized.into_inner();
+    let mut net = entry.into_net::<Net<u32>>().unwrap();
+    net.reduce_all();
+    let net_normalized = net.clone().read_term(net.get(Index(0)).ports().principal);
+    #[cfg(feature = "accelerated")]
+    {
+        let net = normalize_accelerated(net);
+        let term = net.read_term(net.get(Index(0)).ports().principal);
+        assert_eq!(normalized, term);
+    }
+    assert_eq!(normalized, net_normalized);
+}
+
+#[test]
+fn trivial() {
+    round_trip(
+        r#"
+entry = \x x
+"#,
+    );
+}
+
+#[test]
+fn identity() {
+    round_trip(
+        r#"
+id = \x x
+entry = (id id)
+"#,
+    );
+}
+
+#[test]
+fn negation() {
+    round_trip(
+        r#"
+true = \t \f t
+false = \t \f f
+not = \a \t \f (a f t)
+entry = (not (not (not true)))
+"#,
+    );
+}
+
+#[test]
+fn duplication() {
+    round_trip(
+        r#"
+id = \x x
+entry =
+  : Id = . id
+  . (Id (Id Id))
+"#,
+    );
+}

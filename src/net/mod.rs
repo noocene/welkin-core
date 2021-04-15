@@ -259,7 +259,7 @@ impl<T: PartialEq + Storage> Index<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Net<T: Storage> {
     agents: Vec<Agent<T>>,
     freed: Vec<Index<T>>,
