@@ -3,6 +3,8 @@ use std::fmt::Display;
 use std::{fmt::Debug, hash::Hash};
 
 mod storage;
+pub use crate::convert::NetBuilderExt;
+pub use crate::convert::VisitNetExt;
 pub(crate) use storage::Storage;
 
 #[cfg(feature = "graphviz")]

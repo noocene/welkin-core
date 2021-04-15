@@ -1,12 +1,15 @@
 use std::convert::Infallible;
 
-use super::Term;
+use super::{Primitives, Term};
 
-impl<T> Term<T> {
-    pub fn try_map_reference<U, E, F: Fn(T) -> Result<Term<U>, E> + Clone>(
+impl<T, V: Primitives<T>> Term<T, V> {
+    pub fn try_map_reference<U, E, F: Fn(T) -> Result<Term<U, V>, E> + Clone>(
         self,
         f: F,
-    ) -> Result<Term<U>, E> {
+    ) -> Result<Term<U, V>, E>
+    where
+        V: Primitives<U>,
+    {
         use Term::*;
 
         Ok(match self {
@@ -15,6 +18,7 @@ impl<T> Term<T> {
                 body: Box::new(body.try_map_reference(f)?),
                 erased,
             },
+            Primitive(primitive) => Primitive(primitive),
             Apply {
                 function,
                 argument,
@@ -52,7 +56,10 @@ impl<T> Term<T> {
             Wrap(term) => Wrap(Box::new(term.try_map_reference(f)?)),
         })
     }
-    pub fn map_reference<U, F: Clone + Fn(T) -> Term<U>>(self, f: F) -> Term<U> {
+    pub fn map_reference<U, F: Clone + Fn(T) -> Term<U, V>>(self, f: F) -> Term<U, V>
+    where
+        V: Primitives<U>,
+    {
         self.try_map_reference(|a| Ok::<_, Infallible>(f(a)))
             .unwrap()
     }

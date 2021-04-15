@@ -1,57 +1,76 @@
 use derivative::Derivative;
 use std::{collections::HashMap, hash::Hash};
 
-use crate::term::{debug_reference, Index, NormalizationError, Show, Term};
+use crate::term::{debug_reference, Index, None, NormalizationError, Primitives, Show, Term};
 
 #[derive(Derivative)]
-#[derivative(Debug(bound = "T: Show"))]
-pub enum AnalysisError<T> {
+#[derivative(Debug(bound = "T: Show, U: Show"))]
+pub enum AnalysisError<T, U: Primitives<T> = None> {
     NormalizationError(NormalizationError),
-    NonFunctionLambda { term: Term<T>, ty: Term<T> },
-    TypeError { expected: Term<T>, got: Term<T> },
-    ErasureMismatch { lambda: Term<T>, ty: Term<T> },
+    NonFunctionLambda {
+        term: Term<T, U>,
+        ty: Term<T, U>,
+    },
+    TypeError {
+        expected: Term<T, U>,
+        got: Term<T, U>,
+    },
+    ErasureMismatch {
+        lambda: Term<T, U>,
+        ty: Term<T, U>,
+    },
     UnboundReference(#[derivative(Debug(format_with = "debug_reference"))] T),
-    NonFunctionApplication(Term<T>),
-    UnboxedDuplication(Term<T>),
-    Impossible(Term<T>),
-    ExpectedWrap { term: Term<T>, ty: Term<T> },
-    InvalidWrap { wrap: Term<T>, got: Term<T> },
+    NonFunctionApplication(Term<T, U>),
+    UnboxedDuplication(Term<T, U>),
+    Impossible(Term<T, U>),
+    ExpectedWrap {
+        term: Term<T, U>,
+        ty: Term<T, U>,
+    },
+    InvalidWrap {
+        wrap: Term<T, U>,
+        got: Term<T, U>,
+    },
 }
 
-impl<T> From<NormalizationError> for AnalysisError<T> {
+impl<T, U: Primitives<T>> From<NormalizationError> for AnalysisError<T, U> {
     fn from(e: NormalizationError) -> Self {
         AnalysisError::NormalizationError(e)
     }
 }
 
-pub trait Definitions<T> {
-    fn get(&self, name: &T) -> Option<&Term<T>>;
+pub trait Definitions<T, U: Primitives<T> = None> {
+    fn get(&self, name: &T) -> Option<&Term<T, U>>;
 }
 
-pub trait TypedDefinitions<T> {
-    fn get_typed(&self, name: &T) -> Option<&(Term<T>, Term<T>)>;
+pub trait TypedDefinitions<T, U: Primitives<T> = None> {
+    fn get_typed(&self, name: &T) -> Option<&(Term<T, U>, Term<T, U>)>;
 }
 
-impl<T: Hash + Eq> TypedDefinitions<T> for HashMap<T, (Term<T>, Term<T>)> {
-    fn get_typed(&self, name: &T) -> Option<&(Term<T>, Term<T>)> {
+impl<T: Hash + Eq, U: Primitives<T>> TypedDefinitions<T, U>
+    for HashMap<T, (Term<T, U>, Term<T, U>)>
+{
+    fn get_typed(&self, name: &T) -> Option<&(Term<T, U>, Term<T, U>)> {
         HashMap::get(self, name)
     }
 }
 
-impl<U, T: TypedDefinitions<U>> Definitions<U> for T {
-    fn get(&self, name: &U) -> Option<&Term<U>> {
+impl<U, V: Primitives<U>, T: TypedDefinitions<U, V>> Definitions<U, V> for T {
+    fn get(&self, name: &U) -> Option<&Term<U, V>> {
         TypedDefinitions::get_typed(self, name).map(|(_, b)| b)
     }
 }
 
-impl<T> Term<T> {
-    pub fn check<U: TypedDefinitions<T>>(
+impl<T, V: Primitives<T>> Term<T, V> {
+    pub fn check<U: TypedDefinitions<T, V>>(
         &self,
-        ty: &Term<T>,
+        ty: &Term<T, V>,
         definitions: &U,
-    ) -> Result<(), AnalysisError<T>>
+    ) -> Result<(), AnalysisError<T, V>>
     where
-        T: Clone + Eq,
+        T: Clone,
+        V: Clone,
+        Term<T, V>: PartialEq,
     {
         use Term::*;
 
@@ -134,12 +153,14 @@ impl<T> Term<T> {
         })
     }
 
-    pub fn infer<U: TypedDefinitions<T>>(
+    pub fn infer<U: TypedDefinitions<T, V>>(
         &self,
         definitions: &U,
-    ) -> Result<Term<T>, AnalysisError<T>>
+    ) -> Result<Term<T, V>, AnalysisError<T, V>>
     where
-        T: Clone + Eq,
+        T: Clone,
+        V: Clone,
+        Term<T, V>: PartialEq,
     {
         use Term::*;
 
@@ -240,6 +261,8 @@ impl<T> Term<T> {
                 Universe
             }
             Put(expression) => Wrap(Box::new(expression.infer(definitions)?)),
+
+            Primitive(primitive) => primitive.ty().into_owned(),
 
             _ => Err(AnalysisError::Impossible(self.clone()))?,
         })

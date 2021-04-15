@@ -1,5 +1,8 @@
+use std::{borrow::Cow, fmt::Debug};
+
 mod eq;
 mod index;
+mod map_primitive;
 mod map_reference;
 mod normalize;
 #[cfg(feature = "parser")]
@@ -21,36 +24,70 @@ pub use stratified::{StratificationError, Stratified};
 pub struct Index(pub usize);
 
 #[derive(Serialize, Deserialize, Clone)]
-pub enum Term<T> {
+pub enum None {}
+
+impl Show for None {
+    fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        panic!()
+    }
+}
+
+pub trait Primitives<T> {
+    fn ty(&self) -> Cow<'_, Term<T, Self>>
+    where
+        T: Clone,
+        Self: Clone;
+
+    fn apply(&self, argument: &Term<T, Self>) -> Term<T, Self>
+    where
+        Self: Sized;
+}
+
+impl<T> Primitives<T> for None {
+    fn ty(&self) -> Cow<'_, Term<T>>
+    where
+        T: Clone,
+    {
+        panic!()
+    }
+
+    fn apply(&self, _: &Term<T>) -> Term<T> {
+        panic!()
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub enum Term<T, U: Primitives<T> = None> {
     // Untyped language
     Variable(Index),
     Lambda {
-        body: Box<Term<T>>,
+        body: Box<Term<T, U>>,
         erased: bool,
     },
     Apply {
-        function: Box<Term<T>>,
-        argument: Box<Term<T>>,
+        function: Box<Term<T, U>>,
+        argument: Box<Term<T, U>>,
         erased: bool,
     },
-    Put(Box<Term<T>>),
+    Put(Box<Term<T, U>>),
     Duplicate {
-        expression: Box<Term<T>>,
-        body: Box<Term<T>>,
+        expression: Box<Term<T, U>>,
+        body: Box<Term<T, U>>,
     },
     Reference(T),
+    Primitive(U),
 
     // Typed extensions
     Universe,
     Function {
-        argument_type: Box<Term<T>>,
-        return_type: Box<Term<T>>,
+        argument_type: Box<Term<T, U>>,
+        return_type: Box<Term<T, U>>,
         erased: bool,
     },
     Annotation {
         checked: bool,
-        expression: Box<Term<T>>,
-        ty: Box<Term<T>>,
+        expression: Box<Term<T, U>>,
+        ty: Box<Term<T, U>>,
     },
-    Wrap(Box<Term<T>>),
+    Wrap(Box<Term<T, U>>),
 }

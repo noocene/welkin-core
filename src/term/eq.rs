@@ -1,12 +1,16 @@
-use super::{Index, Term};
+use super::{Index, Primitives, Term};
 
 impl<T: Eq + Clone> Eq for Term<T> {}
 
-impl<T: PartialEq + Clone> PartialEq for Term<T> {
+impl<T: PartialEq + Clone, V: Primitives<T> + Clone> PartialEq for Term<T, V> {
     fn eq(&self, other: &Self) -> bool {
         use Term::*;
 
-        fn eq_helper<T: PartialEq + Clone>(a: &Term<T>, b: &Term<T>, index: Index) -> bool {
+        fn eq_helper<T: PartialEq + Clone, V: Primitives<T> + Clone>(
+            a: &Term<T, V>,
+            b: &Term<T, V>,
+            index: Index,
+        ) -> bool {
             match (a, b) {
                 (Variable(a), Variable(b)) => a == b,
                 (

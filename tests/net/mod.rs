@@ -1,10 +1,8 @@
 use std::collections::HashMap;
 
-use accelerated::normalize_accelerated;
 use welkin_core::{
-    net::{Index, Net},
+    net::{Index, Net, VisitNetExt},
     term::{untyped::Definitions, Definitions as Defs, Term},
-    VisitNetExt,
 };
 
 #[cfg(feature = "accelerated")]
@@ -41,7 +39,7 @@ fn round_trip(term: &str) {
     let net_normalized = net.clone().read_term(net.get(Index(0)).ports().principal);
     #[cfg(feature = "accelerated")]
     {
-        let net = normalize_accelerated(net);
+        let net = accelerated::normalize_accelerated(net);
         let term = net.read_term(net.get(Index(0)).ports().principal);
         assert_eq!(normalized, term);
     }

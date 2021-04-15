@@ -1,6 +1,6 @@
 use std::mem::replace;
 
-use super::{Definitions, Index, Term};
+use super::{Definitions, Index, Primitives, Term};
 
 #[derive(Debug)]
 pub enum NormalizationError {
@@ -8,7 +8,7 @@ pub enum NormalizationError {
     InvalidApplication,
 }
 
-impl<T> Term<T> {
+impl<T, V: Primitives<T>> Term<T, V> {
     pub(crate) fn shift(&mut self, replaced: Index) {
         use Term::*;
 
@@ -34,7 +34,7 @@ impl<T> Term<T> {
                 expression.shift(replaced);
                 body.shift(replaced.child());
             }
-            Reference(_) | Universe => {}
+            Reference(_) | Primitive(_) | Universe => {}
 
             Wrap(term) => term.shift(replaced),
             Annotation { expression, ty, .. } => {
@@ -56,18 +56,20 @@ impl<T> Term<T> {
         self.shift(Index::top())
     }
 
-    pub(crate) fn substitute_shifted(&mut self, variable: Index, term: &Term<T>)
+    pub(crate) fn substitute_shifted(&mut self, variable: Index, term: &Term<T, V>)
     where
         T: Clone,
+        V: Clone,
     {
         let mut term = term.clone();
         term.shift_top();
         self.substitute(variable.child(), &term)
     }
 
-    pub(crate) fn substitute(&mut self, variable: Index, term: &Term<T>)
+    pub(crate) fn substitute(&mut self, variable: Index, term: &Term<T, V>)
     where
         T: Clone,
+        V: Clone,
     {
         use Term::*;
 
@@ -98,6 +100,7 @@ impl<T> Term<T> {
                 body.substitute_shifted(variable, term);
             }
             Reference(_) | Universe => {}
+            Primitive(_) => todo!(),
 
             Wrap(expr) => expr.substitute(variable, term),
             Annotation { expression, ty, .. } => {
@@ -119,19 +122,21 @@ impl<T> Term<T> {
         }
     }
 
-    pub(crate) fn substitute_top(&mut self, term: &Term<T>)
+    pub(crate) fn substitute_top(&mut self, term: &Term<T, V>)
     where
         T: Clone,
+        V: Clone,
     {
         self.substitute(Index::top(), term)
     }
 
-    pub(crate) fn normalize<U: Definitions<T>>(
+    pub fn normalize<U: Definitions<T, V>>(
         &mut self,
         definitions: &U,
     ) -> Result<(), NormalizationError>
     where
         T: Clone,
+        V: Clone,
     {
         use Term::*;
 
@@ -197,6 +202,9 @@ impl<T> Term<T> {
                 } else {
                     match *function {
                         Put(_) => Err(NormalizationError::InvalidApplication)?,
+                        Primitive(primitive) => {
+                            *self = primitive.apply(argument);
+                        }
                         Duplicate { body, expression } => {
                             let mut argument = argument.clone();
                             argument.shift_top();
@@ -221,9 +229,8 @@ impl<T> Term<T> {
                     }
                 }
             }
-            Variable(_) => {}
+            Variable(_) | Primitive(_) | Universe => {}
 
-            Universe => {}
             Wrap(term) => {
                 term.normalize(definitions)?;
             }
@@ -247,12 +254,13 @@ impl<T> Term<T> {
         Ok(())
     }
 
-    pub(crate) fn lazy_normalize<U: Definitions<T>>(
+    pub(crate) fn lazy_normalize<U: Definitions<T, V>>(
         &mut self,
         definitions: &U,
     ) -> Result<(), NormalizationError>
     where
         T: Clone,
+        V: Clone,
     {
         use Term::*;
 
@@ -331,6 +339,7 @@ impl<T> Term<T> {
                 }
             }
             Variable(_) | Lambda { .. } => {}
+            Primitive(_) => todo!(),
 
             Universe | Function { .. } => {}
             Wrap(term) => {
