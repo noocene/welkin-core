@@ -2,9 +2,8 @@ use std::{collections::HashMap, fmt::Debug, fs::read_to_string, io, process::exi
 #[cfg(any(feature = "graphviz", feature = "accelerated"))]
 use welkin_core::net::Net;
 use welkin_core::{
-    net::Index,
+    net::{Index, VisitNetExt},
     term::{typed::Definitions, ParseError, Term},
-    VisitNetExt,
 };
 
 fn e<E: Debug>(e: E) -> String {

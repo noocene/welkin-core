@@ -1,24 +1,39 @@
 use derivative::Derivative;
 use std::{collections::HashMap, hash::Hash};
 
-use crate::term::{debug_reference, Index, NormalizationError, Show, Term};
+use crate::term::{debug_reference, Index, None, NormalizationError, Primitives, Show, Term};
 
 #[derive(Derivative)]
-#[derivative(Debug(bound = "T: Show"))]
-pub enum AnalysisError<T> {
+#[derivative(Debug(bound = "T: Show, U: Show"))]
+pub enum AnalysisError<T, U: Primitives<T> = None> {
     NormalizationError(NormalizationError),
-    NonFunctionLambda { term: Term<T>, ty: Term<T> },
-    TypeError { expected: Term<T>, got: Term<T> },
-    ErasureMismatch { lambda: Term<T>, ty: Term<T> },
+    NonFunctionLambda {
+        term: Term<T, U>,
+        ty: Term<T, U>,
+    },
+    TypeError {
+        expected: Term<T, U>,
+        got: Term<T, U>,
+    },
+    ErasureMismatch {
+        lambda: Term<T, U>,
+        ty: Term<T, U>,
+    },
     UnboundReference(#[derivative(Debug(format_with = "debug_reference"))] T),
-    NonFunctionApplication(Term<T>),
-    UnboxedDuplication(Term<T>),
-    Impossible(Term<T>),
-    ExpectedWrap { term: Term<T>, ty: Term<T> },
-    InvalidWrap { wrap: Term<T>, got: Term<T> },
+    NonFunctionApplication(Term<T, U>),
+    UnboxedDuplication(Term<T, U>),
+    Impossible(Term<T, U>),
+    ExpectedWrap {
+        term: Term<T, U>,
+        ty: Term<T, U>,
+    },
+    InvalidWrap {
+        wrap: Term<T, U>,
+        got: Term<T, U>,
+    },
 }
 
-impl<T> From<NormalizationError> for AnalysisError<T> {
+impl<T, U: Primitives<T>> From<NormalizationError> for AnalysisError<T, U> {
     fn from(e: NormalizationError) -> Self {
         AnalysisError::NormalizationError(e)
     }

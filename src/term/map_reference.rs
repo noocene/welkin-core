@@ -15,6 +15,7 @@ impl<T> Term<T> {
                 body: Box::new(body.try_map_reference(f)?),
                 erased,
             },
+            Primitive(primitive) => Primitive(primitive),
             Apply {
                 function,
                 argument,

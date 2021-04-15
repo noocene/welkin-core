@@ -70,6 +70,7 @@ impl<T> Term<T> {
                 Duplicate {
                     expression, body, ..
                 } => uses_helper(expression, variable) + uses_helper(body, variable.child()),
+                Primitive(_) => todo!(),
 
                 Wrap(term) => uses_helper(term, variable),
                 Annotation { expression, ty, .. } => {
@@ -110,6 +111,7 @@ impl<T> Term<T> {
                     n_boxes_helper(expression, variable, nestings, current_nestings)
                         && n_boxes_helper(body, variable.child(), nestings, current_nestings)
                 }
+                Primitive(_) => todo!(),
 
                 Wrap(term) => n_boxes_helper(term, variable, nestings, current_nestings),
                 Annotation { expression, .. } => {
@@ -165,6 +167,7 @@ impl<T> Term<T> {
                 }
             }
             Variable(_) | Universe => {}
+            Primitive(_) => todo!(),
 
             Wrap(term) => term.is_stratified(definitions)?,
             Annotation { expression, ty, .. } => {

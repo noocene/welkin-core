@@ -35,6 +35,7 @@ impl<T> Term<T> {
                 body.shift(replaced.child());
             }
             Reference(_) | Universe => {}
+            Primitive(_) => todo!(),
 
             Wrap(term) => term.shift(replaced),
             Annotation { expression, ty, .. } => {
@@ -98,6 +99,7 @@ impl<T> Term<T> {
                 body.substitute_shifted(variable, term);
             }
             Reference(_) | Universe => {}
+            Primitive(_) => todo!(),
 
             Wrap(expr) => expr.substitute(variable, term),
             Annotation { expression, ty, .. } => {
@@ -222,6 +224,7 @@ impl<T> Term<T> {
                 }
             }
             Variable(_) => {}
+            Primitive(_) => todo!(),
 
             Universe => {}
             Wrap(term) => {
@@ -331,6 +334,7 @@ impl<T> Term<T> {
                 }
             }
             Variable(_) | Lambda { .. } => {}
+            Primitive(_) => todo!(),
 
             Universe | Function { .. } => {}
             Wrap(term) => {

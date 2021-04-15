@@ -1,3 +1,5 @@
+use std::{borrow::Cow, fmt::Debug};
+
 mod eq;
 mod index;
 mod map_reference;
@@ -21,7 +23,51 @@ pub use stratified::{StratificationError, Stratified};
 pub struct Index(pub usize);
 
 #[derive(Serialize, Deserialize, Clone)]
-pub enum Term<T> {
+pub enum None {}
+
+impl Show for None {
+    fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        panic!()
+    }
+}
+
+pub trait Primitives<T> {
+    fn argument_ty(&self) -> Cow<'_, Term<T>>
+    where
+        T: Clone;
+
+    fn return_ty(&self, argument: &Term<T>) -> Cow<'_, Term<T, Self>>
+    where
+        T: Clone,
+        Self: Clone;
+
+    fn apply(&self, argument: &Term<T>) -> Term<T, Self>
+    where
+        Self: Sized;
+}
+
+impl<T> Primitives<T> for None {
+    fn argument_ty(&self) -> Cow<'_, Term<T>>
+    where
+        T: Clone,
+    {
+        panic!()
+    }
+
+    fn return_ty(&self, _: &Term<T>) -> Cow<'_, Term<T>>
+    where
+        T: Clone,
+    {
+        panic!()
+    }
+
+    fn apply(&self, _: &Term<T>) -> Term<T> {
+        panic!()
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub enum Term<T, U: Primitives<T> = None> {
     // Untyped language
     Variable(Index),
     Lambda {
@@ -39,6 +85,7 @@ pub enum Term<T> {
         body: Box<Term<T>>,
     },
     Reference(T),
+    Primitive(U),
 
     // Typed extensions
     Universe,

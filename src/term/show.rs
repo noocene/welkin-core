@@ -1,6 +1,6 @@
 use std::fmt::{self, Debug, Display};
 
-use super::Term;
+use super::{Primitives, Term};
 
 impl<T: Display> Show for T {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -16,7 +16,7 @@ pub fn debug_reference<T: Show>(data: &T, f: &mut fmt::Formatter<'_>) -> fmt::Re
     Show::fmt(data, f)
 }
 
-impl<T: Show> Term<T> {
+impl<T: Show, U: Primitives<T> + Show> Term<T, U> {
     fn write(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Term::*;
 
@@ -55,11 +55,12 @@ impl<T: Show> Term<T> {
                 .and_then(|_| argument_type.write(f))
                 .and_then(|_| write!(f, " "))
                 .and_then(|_| return_type.write(f)),
+            Primitive(prim) => prim.fmt(f),
         }
     }
 }
 
-impl<T: Show> Debug for Term<T> {
+impl<T: Show, U: Primitives<T> + Show> Debug for Term<T, U> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.write(f)
     }
