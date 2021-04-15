@@ -39,22 +39,24 @@ impl<T, U: Primitives<T>> From<NormalizationError> for AnalysisError<T, U> {
     }
 }
 
-pub trait Definitions<T> {
-    fn get(&self, name: &T) -> Option<&Term<T>>;
+pub trait Definitions<T, U: Primitives<T> = None> {
+    fn get(&self, name: &T) -> Option<&Term<T, U>>;
 }
 
-pub trait TypedDefinitions<T> {
-    fn get_typed(&self, name: &T) -> Option<&(Term<T>, Term<T>)>;
+pub trait TypedDefinitions<T, U: Primitives<T> = None> {
+    fn get_typed(&self, name: &T) -> Option<&(Term<T, U>, Term<T, U>)>;
 }
 
-impl<T: Hash + Eq> TypedDefinitions<T> for HashMap<T, (Term<T>, Term<T>)> {
-    fn get_typed(&self, name: &T) -> Option<&(Term<T>, Term<T>)> {
+impl<T: Hash + Eq, U: Primitives<T>> TypedDefinitions<T, U>
+    for HashMap<T, (Term<T, U>, Term<T, U>)>
+{
+    fn get_typed(&self, name: &T) -> Option<&(Term<T, U>, Term<T, U>)> {
         HashMap::get(self, name)
     }
 }
 
-impl<U, T: TypedDefinitions<U>> Definitions<U> for T {
-    fn get(&self, name: &U) -> Option<&Term<U>> {
+impl<U, V: Primitives<U>, T: TypedDefinitions<U, V>> Definitions<U, V> for T {
+    fn get(&self, name: &U) -> Option<&Term<U, V>> {
         TypedDefinitions::get_typed(self, name).map(|(_, b)| b)
     }
 }

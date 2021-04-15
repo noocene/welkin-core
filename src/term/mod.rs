@@ -32,16 +32,17 @@ impl Show for None {
 }
 
 pub trait Primitives<T> {
-    fn argument_ty(&self) -> Cow<'_, Term<T>>
-    where
-        T: Clone;
-
-    fn return_ty(&self, argument: &Term<T>) -> Cow<'_, Term<T, Self>>
+    fn argument_ty(&self) -> Cow<'_, Term<T, Self>>
     where
         T: Clone,
         Self: Clone;
 
-    fn apply(&self, argument: &Term<T>) -> Term<T, Self>
+    fn return_ty(&self, argument: &Term<T, Self>) -> Cow<'_, Term<T, Self>>
+    where
+        T: Clone,
+        Self: Clone;
+
+    fn apply(&self, argument: &Term<T, Self>) -> Term<T, Self>
     where
         Self: Sized;
 }
@@ -71,18 +72,18 @@ pub enum Term<T, U: Primitives<T> = None> {
     // Untyped language
     Variable(Index),
     Lambda {
-        body: Box<Term<T>>,
+        body: Box<Term<T, U>>,
         erased: bool,
     },
     Apply {
-        function: Box<Term<T>>,
-        argument: Box<Term<T>>,
+        function: Box<Term<T, U>>,
+        argument: Box<Term<T, U>>,
         erased: bool,
     },
-    Put(Box<Term<T>>),
+    Put(Box<Term<T, U>>),
     Duplicate {
-        expression: Box<Term<T>>,
-        body: Box<Term<T>>,
+        expression: Box<Term<T, U>>,
+        body: Box<Term<T, U>>,
     },
     Reference(T),
     Primitive(U),
@@ -90,14 +91,14 @@ pub enum Term<T, U: Primitives<T> = None> {
     // Typed extensions
     Universe,
     Function {
-        argument_type: Box<Term<T>>,
-        return_type: Box<Term<T>>,
+        argument_type: Box<Term<T, U>>,
+        return_type: Box<Term<T, U>>,
         erased: bool,
     },
     Annotation {
         checked: bool,
-        expression: Box<Term<T>>,
-        ty: Box<Term<T>>,
+        expression: Box<Term<T, U>>,
+        ty: Box<Term<T, U>>,
     },
-    Wrap(Box<Term<T>>),
+    Wrap(Box<Term<T, U>>),
 }
