@@ -33,7 +33,7 @@ impl<'a, T, U: Definitions<T>> Stratified<'a, T, U> {
 #[derive(Derivative)]
 #[derivative(Debug(bound = "T: Show"))]
 pub enum StratificationError<T> {
-    AffineReused(Term<T>),
+    MultiplicityMismatch(Term<T>),
     AffineUsedInBox(Term<T>),
     DupNonUnitBoxMultiplicity(Term<T>),
     UndefinedReference(#[derivative(Debug(format_with = "debug_reference"))] T),
@@ -53,7 +53,13 @@ impl<T> Term<T> {
                     }
                 }
                 Reference(_) | Function { .. } | Universe => 0,
-                Lambda { body, .. } => uses_helper(body, variable.child()),
+                Lambda { body, erased } => {
+                    if *erased {
+                        0
+                    } else {
+                        uses_helper(body, variable.child())
+                    }
+                }
                 Apply {
                     function,
                     argument,
@@ -133,9 +139,9 @@ impl<T> Term<T> {
         use Term::*;
 
         match &self {
-            Lambda { body, .. } => {
-                if body.uses() > 1 {
-                    return Err(StratificationError::AffineReused(self.clone()));
+            Lambda { body, erased } => {
+                if body.uses() > if *erased { 0 } else { 1 } {
+                    return Err(StratificationError::MultiplicityMismatch(self.clone()));
                 }
                 if !body.is_boxed_n_times(0) {
                     return Err(StratificationError::AffineUsedInBox(self.clone()));

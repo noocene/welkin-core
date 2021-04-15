@@ -44,10 +44,11 @@ nil : _,A:* [List A] = /A /prop \nil \cons nil
 cons : _,A:* +,head:A +,tail:[List A] [List A] = /A \head \tail /prop
     \nil \cons (cons head tail)
 
-typeif : _,A:* _,B:* +,a:Bool * = /A /B \a
+typeif : +,A:* +,B:* +,a:Bool * = \A \B \a
     ([a \x *] A B)
-if : _,A:* _,B:* +,bool:Bool +,:A +,:B ([typeif A B] bool) = /A /B \bool \a \b 
-    ([bool \self ([typeif A B] self)] a b)
+
+if : _,A:* _,B:* +,bool:Bool +,:A +,:B ((typeif A B) bool) = /A /B \bool \a \b 
+    ([bool \self ((typeif A B) self)] a b)
 
 id : _,A:* +,a:A A = /A \x x
 idt : * = +,:Bool Bool
