@@ -113,21 +113,26 @@ void main() {
                     mark_for_visit(index(b.right));
                 }
             } else {
-                replace(a_addr, Agent(
-                    a.principal,
-                    b.left,
-                    b.right,
-                    WIRE
-                ));
-                replace(b_addr, Agent(
-                    b.principal,
-                    a.left,
-                    a.right,
-                    WIRE
-                ));
+                if (a.ty == EPSILON) {
+                    free(a_addr);
+                    free(b_addr);
+                } else {
+                    replace(a_addr, Agent(
+                        a.principal,
+                        b.left,
+                        b.right,
+                        WIRE
+                    ));
+                    replace(b_addr, Agent(
+                        b.principal,
+                        a.left,
+                        a.right,
+                        WIRE
+                    ));
 
-                mark_for_visit(index(a.left));
-                mark_for_visit(index(b.right));
+                    mark_for_visit(index(a.left));
+                    mark_for_visit(index(b.right));
+                }
             }
         }
 
