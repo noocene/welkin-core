@@ -11,7 +11,7 @@ void main() {
             state.visits_done = 0;
         }
 
-        Port a_port = port(needs_visiting[i], PRINCIPAL);
+        Port a_port = needs_visiting[i];
         Agent a = follow(a_port);
 
         Port initial = a_port;

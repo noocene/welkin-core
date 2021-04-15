@@ -64,7 +64,7 @@ layout(set = 0, binding = 2) buffer FreedAgents {
 };
 
 layout(set = 0, binding = 3) buffer NeedsVisitingAgents {
-   Index needs_visiting[];
+   Port needs_visiting[];
 };
 
 layout(set = 0, binding = 4) buffer State {
@@ -109,8 +109,8 @@ const Agent FREE = Agent(
     WIRE
 );
 
-void mark_for_visit(Index index) {
-    needs_visiting[atomicAdd(state.visits_needed, 1)] = index;
+void mark_for_visit(Port port) {
+    needs_visiting[atomicAdd(state.visits_needed, 1)] = port;
 }
 
 void mark_active(Index index) {

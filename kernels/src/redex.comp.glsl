@@ -58,10 +58,10 @@ void main() {
                     replace(a_addr, new_a);
                     replace(b_addr, new_b);
 
-                    mark_for_visit(p);
-                    mark_for_visit(q);
-                    mark_for_visit(index(b.left));
-                    mark_for_visit(index(b.right));
+                    mark_for_visit(port(p, PRINCIPAL));
+                    mark_for_visit(port(p, PRINCIPAL));
+                    mark_for_visit(b.left);
+                    mark_for_visit(b.right);
                 } else {
                     Index p_addr = alloc();
                     Index q_addr = alloc();
@@ -107,10 +107,10 @@ void main() {
                         WIRE
                     ));
 
-                    mark_for_visit(index(a.left));
-                    mark_for_visit(index(a.right));
-                    mark_for_visit(index(b.left));
-                    mark_for_visit(index(b.right));
+                    mark_for_visit(b.left);
+                    mark_for_visit(b.right);
+                    mark_for_visit(a.left);
+                    mark_for_visit(a.right);
                 }
             } else {
                 if (a.ty == EPSILON) {
@@ -130,8 +130,8 @@ void main() {
                         WIRE
                     ));
 
-                    mark_for_visit(index(a.left));
-                    mark_for_visit(index(b.right));
+                    mark_for_visit(a.left);
+                    mark_for_visit(b.right);
                 }
             }
         }

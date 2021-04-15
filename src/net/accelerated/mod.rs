@@ -49,7 +49,7 @@ pub struct Accelerated {
     agents: Arc<CpuAccessibleBuffer<[Agent<u32>]>>,
     active_agents: Arc<CpuAccessibleBuffer<[Index<u32>]>>,
     freed_agents: Arc<CpuAccessibleBuffer<[Index<u32>]>>,
-    _needs_visiting: Arc<CpuAccessibleBuffer<[Index<u32>]>>,
+    _needs_visiting: Arc<CpuAccessibleBuffer<[Port<u32>]>>,
     state: Arc<CpuAccessibleBuffer<State>>,
     #[cfg(feature = "renderdoc")]
     renderdoc: RenderDoc<V120>,
@@ -64,7 +64,6 @@ impl Accelerated {
         }
 
         let a = loop {
-            // break Ok(0);
             let command_buffer = {
                 let mut builder =
                     AutoCommandBufferBuilder::new(self.device.clone(), self.queue.family())?;
@@ -221,6 +220,8 @@ impl Net<u32> {
         let freed_len = self.freed.len();
         let active_len = self.active.len();
 
+        let ext_len = agents_len * 4;
+
         let usage = BufferUsage::all();
 
         let mut agents = self.agents;
@@ -232,13 +233,13 @@ impl Net<u32> {
                     Port::new(Index(0), Slot::Principal),
                     AgentType::Wire
                 );
-                agents_len
+                ext_len
             ]
             .into_iter(),
         );
 
         let mut active = self.active;
-        active.extend(vec![Index(0); agents_len]);
+        active.extend(vec![Index(0); ext_len]);
 
         let agents =
             CpuAccessibleBuffer::from_iter(device.clone(), usage, false, agents.into_iter())?;
@@ -249,7 +250,7 @@ impl Net<u32> {
         let mut freed = self.freed;
         freed.extend(vec![
             Index(std::u32::MAX);
-            agents_len.saturating_sub(freed_len)
+            ext_len.saturating_sub(freed_len)
         ]);
 
         let freed_agents =
@@ -259,7 +260,7 @@ impl Net<u32> {
             device.clone(),
             usage,
             false,
-            vec![Index(0); agents_len].into_iter(),
+            vec![Port::new(Index(0), Slot::Principal); ext_len].into_iter(),
         )?;
 
         let state = CpuAccessibleBuffer::from_data(

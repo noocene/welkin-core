@@ -63,4 +63,4 @@ dup : _,A:* +,:
 
 main : !idt =
     : A = .bid
-    .(a A A)
+    .\x (A (A (A x)))

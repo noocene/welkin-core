@@ -53,6 +53,10 @@ impl<T: Storage + Clone + Copy + Eq + PartialOrd> NetBuilder for Net<T> {
     fn build(mut self, root: Self::Port) -> Self::Net {
         self.connect(self.get(Index(T::zero())).ports().principal, root);
         self.bind_unbound();
+
+        // TODO this shouldn't be necessary
+        self.active.dedup();
+
         self
     }
 }
@@ -260,6 +264,13 @@ impl<T: Storage + Clone + Copy> Net<T> {
         self.get_agent(&port).slot(port.slot())
     }
 
+    fn mark_active(&mut self, index: Index<T>)
+    where
+        T: PartialEq,
+    {
+        self.active.push(index);
+    }
+
     pub fn connect(&mut self, a: Port<T>, b: Port<T>)
     where
         T: PartialEq + PartialOrd,
@@ -270,11 +281,11 @@ impl<T: Storage + Clone + Copy> Net<T> {
             && b.slot() == Principal
             && !(a.address().is_root() || b.address().is_root())
         {
-            self.active.push(if a.address().0 < b.address().0 {
-                a.address()
+            if a.address().0 < b.address().0 {
+                self.mark_active(a.address())
             } else {
-                b.address()
-            });
+                self.mark_active(b.address())
+            }
         }
 
         let a_agent = self.get_mut(a.address());

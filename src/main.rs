@@ -32,15 +32,7 @@ fn entry(buffer: String, term: String) -> Result<(), String> {
     #[cfg(all(not(feature = "accelerated"), feature = "graphviz"))]
     let entry = {
         let mut entry = entry;
-        let mut size = 1;
-        let mut idx = 0;
-        while size > 0 {
-            size = entry.reduce(Some(1));
-            entry
-                .render_to(&mut std::fs::File::create(&format!("ex{}.dot", idx)).unwrap())
-                .unwrap();
-            idx += 1;
-        }
+        println!("DONE in {} rewrites", entry.reduce_all());
         entry
     };
 
