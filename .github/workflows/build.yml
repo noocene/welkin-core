@@ -24,4 +24,4 @@ jobs:
     - name: Build with all features enabled
       run: cargo build --lib --features graphviz,accelerated
     - name: Run tests
-      run: cargo test --features accelerated
+      run: cargo test
