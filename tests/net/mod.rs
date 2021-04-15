@@ -90,3 +90,15 @@ entry =
 "#,
     );
 }
+
+#[test]
+fn epsilon() {
+    round_trip(
+        r#"
+id = \x \x x
+entry =
+  : Id = . id
+  . (Id (Id Id))
+"#,
+    );
+}
