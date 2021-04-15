@@ -15,54 +15,103 @@ void main() {
             Agent b = get(b_addr);
 
             if (!same_ty(a, b)) {
-                Index p_addr = alloc();
-                Index q_addr = alloc();
-                Index r_addr = alloc();
-                Index s_addr = alloc();
+                if (a.ty == EPSILON || b.ty == EPSILON) {
+                    if (b.ty == EPSILON) {
+                        Agent c = a;
+                        Index c_addr = a_addr;
+                        a = b;
+                        a_addr = b_addr;
+                        b = c;
+                        b_addr = c_addr;
+                    }
+                    
+                    Index p = alloc();
+                    Index q = alloc();
 
-                replace(p_addr, Agent(
-                    b.left,
-                    port(s_addr, LEFT),
-                    port(r_addr, LEFT),
-                    a.ty
-                ));
-                replace(q_addr, Agent(
-                    b.right,
-                    port(s_addr, RIGHT),
-                    port(r_addr, RIGHT),
-                    a.ty
-                ));
+                    replace(p, Agent(
+                        port(a_addr, LEFT),
+                        port(p, RIGHT),
+                        port(p, LEFT),
+                        EPSILON
+                    ));
+                    replace(q, Agent(
+                        port(a_addr, RIGHT),
+                        port(q, RIGHT),
+                        port(q, LEFT),
+                        EPSILON
+                    ));
 
-                replace(r_addr, Agent(
-                    a.right,
-                    port(p_addr, RIGHT),
-                    port(q_addr, RIGHT),
-                    b.ty
-                ));
-                replace(s_addr, Agent(
-                    a.left,
-                    port(p_addr, LEFT),
-                    port(q_addr, LEFT),
-                    b.ty
-                ));
+                    Agent new_a = Agent(
+                        a.principal,
+                        b.left,
+                        b.right,
+                        WIRE
+                    );
 
-                replace(a_addr, Agent(
-                    a.principal,
-                    port(s_addr, PRINCIPAL),
-                    port(r_addr, PRINCIPAL),
-                    WIRE
-                ));
-                replace(b_addr, Agent(
-                    b.principal,
-                    port(p_addr, PRINCIPAL),
-                    port(q_addr, PRINCIPAL),
-                    WIRE
-                ));
+                    Agent new_b = Agent(
+                        b.principal,
+                        port(p, PRINCIPAL),
+                        port(q, PRINCIPAL),
+                        WIRE
+                    );
 
-                mark_for_visit(index(a.left));
-                mark_for_visit(index(a.right));
-                mark_for_visit(index(b.left));
-                mark_for_visit(index(b.right));
+                    replace(a_addr, new_a);
+                    replace(b_addr, new_b);
+
+                    mark_for_visit(p);
+                    mark_for_visit(q);
+                    mark_for_visit(index(b.left));
+                    mark_for_visit(index(b.right));
+                } else {
+                    Index p_addr = alloc();
+                    Index q_addr = alloc();
+                    Index r_addr = alloc();
+                    Index s_addr = alloc();
+
+                    replace(p_addr, Agent(
+                        b.left,
+                        port(s_addr, LEFT),
+                        port(r_addr, LEFT),
+                        a.ty
+                    ));
+                    replace(q_addr, Agent(
+                        b.right,
+                        port(s_addr, RIGHT),
+                        port(r_addr, RIGHT),
+                        a.ty
+                    ));
+
+                    replace(r_addr, Agent(
+                        a.right,
+                        port(p_addr, RIGHT),
+                        port(q_addr, RIGHT),
+                        b.ty
+                    ));
+                    replace(s_addr, Agent(
+                        a.left,
+                        port(p_addr, LEFT),
+                        port(q_addr, LEFT),
+                        b.ty
+                    ));
+
+                    replace(a_addr, Agent(
+                        a.principal,
+                        port(s_addr, PRINCIPAL),
+                        port(r_addr, PRINCIPAL),
+                        WIRE
+                    ));
+                    replace(b_addr, Agent(
+                        b.principal,
+                        port(p_addr, PRINCIPAL),
+                        port(q_addr, PRINCIPAL),
+                        WIRE
+                    ));
+
+                    mark_for_visit(index(a.left));
+                    mark_for_visit(index(a.right));
+                    mark_for_visit(index(b.left));
+                    mark_for_visit(index(b.right));
+                }
             } else {
                 replace(a_addr, Agent(
                     a.principal,
