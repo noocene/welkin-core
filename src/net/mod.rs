@@ -12,7 +12,13 @@ mod vis;
 pub mod accelerated;
 
 pub trait PortExt {
+    type Address;
+
     fn is_root(&self) -> bool;
+    fn address(&self) -> Self::Address;
+    fn slot(&self) -> Slot;
+
+    fn new(address: Self::Address, slot: Slot) -> Self;
 }
 
 pub trait NetBuilder {
@@ -27,6 +33,48 @@ pub trait NetBuilder {
     fn follow(&self, from: Self::Port) -> Self::Port;
 
     fn build(self, root: Self::Port) -> Self::Net;
+}
+
+pub trait AgentExt {
+    type Port: PortExt;
+
+    fn into_ports(self) -> (Self::Port, Self::Port, Self::Port);
+    fn ty(&self) -> AgentType;
+}
+
+pub trait VisitNet {
+    type Port: PortExt;
+    type Agent: AgentExt<Port = Self::Port>;
+
+    fn follow(&self, port: Self::Port) -> Self::Port;
+
+    fn get(&self, address: <Self::Port as PortExt>::Address) -> &Self::Agent;
+}
+
+impl<T: Storage + PartialEq + Clone> AgentExt for Agent<T> {
+    type Port = Port<T>;
+
+    fn into_ports(self) -> (Self::Port, Self::Port, Self::Port) {
+        let ports = self.ports();
+        (ports.principal, ports.left, ports.right)
+    }
+
+    fn ty(&self) -> AgentType {
+        self.ty
+    }
+}
+
+impl<T: Storage + Clone + Copy + Eq + PartialOrd> VisitNet for Net<T> {
+    type Port = Port<T>;
+    type Agent = Agent<T>;
+
+    fn follow(&self, port: Self::Port) -> Self::Port {
+        Net::<T>::follow(self, port)
+    }
+
+    fn get(&self, address: <Self::Port as PortExt>::Address) -> &Self::Agent {
+        Net::<T>::get(self, address)
+    }
 }
 
 impl<T: Storage + Clone + Copy + Eq + PartialOrd> NetBuilder for Net<T> {
@@ -62,8 +110,22 @@ impl<T: Storage + Clone + Copy + Eq + PartialOrd> NetBuilder for Net<T> {
 }
 
 impl<T: Storage + PartialEq> PortExt for Port<T> {
+    type Address = Index<T>;
+
     fn is_root(&self) -> bool {
         self.address().is_root()
+    }
+
+    fn address(&self) -> Self::Address {
+        Port::<T>::address(self)
+    }
+
+    fn slot(&self) -> Slot {
+        Port::<T>::slot(self)
+    }
+
+    fn new(address: Self::Address, slot: Slot) -> Self {
+        Port::<T>::new(address, slot)
     }
 }
 
@@ -189,7 +251,7 @@ impl<T: Storage> Port<T> {
 
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub struct Index<T>(T);
+pub struct Index<T>(pub T);
 
 impl<T: PartialEq + Storage> Index<T> {
     pub(crate) fn is_root(&self) -> bool {

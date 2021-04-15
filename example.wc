@@ -61,6 +61,4 @@ dup : _,A:* +,:
     : X = x
     . \a (X (X a))
 
-main : !idt =
-    : A = .bid
-    .\x (A (A (A x)))
+main : Bool = (not true)

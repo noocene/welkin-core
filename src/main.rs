@@ -1,7 +1,11 @@
 use std::{collections::HashMap, fmt::Debug, fs::read_to_string, io, process::exit};
 #[cfg(feature = "graphviz")]
 use welkin_core::net::Net;
-use welkin_core::term::{typed::Definitions, ParseError, Term};
+use welkin_core::{
+    net::Index,
+    term::{typed::Definitions, ParseError, Term},
+    VisitNetExt,
+};
 
 fn e<E: Debug>(e: E) -> String {
     format!("{:?}", e)
@@ -37,18 +41,21 @@ fn entry(buffer: String, term: String) -> Result<(), String> {
     };
 
     #[cfg(feature = "graphviz")]
-    {
+    let term: Term<String> = {
         entry
             .render_to(&mut std::fs::File::create("example1.dot").unwrap())
             .unwrap();
-    }
+        entry.read_term(entry.get(Index(0)).ports().principal)
+    };
 
     #[cfg(not(feature = "graphviz"))]
-    {
+    let term = {
         let mut entry = entry;
         entry.normalize().unwrap();
-        println!("{:?}", entry.into_inner());
-    }
+        entry.into_inner()
+    };
+
+    println!("{:?}", term);
 
     Ok(())
 }

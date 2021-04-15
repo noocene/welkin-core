@@ -1,7 +1,7 @@
 use derivative::Derivative;
 
 use crate::{
-    net::{AgentType, NetBuilder, PortExt},
+    net::{AgentExt, AgentType, NetBuilder, PortExt, Slot, VisitNet},
     term::{Definitions, Index, Show, Stratified, Term},
 };
 
@@ -116,5 +116,101 @@ where
         let mut var_ptrs = vec![];
         let entry = terms.0.build_net(&mut net, terms.1, &mut var_ptrs)?;
         Ok(net.build(entry))
+    }
+}
+
+fn build_term<T, N: VisitNet>(
+    net: &N,
+    port: N::Port,
+    var_ptrs: &mut Vec<N::Port>,
+    dup_exit: &mut Vec<Slot>,
+) -> Term<T>
+where
+    N::Port: PartialEq,
+{
+    use Slot::*;
+
+    let agent = net.get(port.address());
+    let ty = agent.ty();
+
+    if ty == AgentType::Delta {
+        match port.slot() {
+            Principal => {
+                var_ptrs.push(<N::Port as PortExt>::new(port.address(), Slot::Left));
+
+                let b_port = net.follow(<N::Port as PortExt>::new(port.address(), Slot::Right));
+                let body = Box::new(build_term(net, b_port, var_ptrs, dup_exit));
+
+                var_ptrs.pop();
+
+                Term::Lambda {
+                    body,
+                    erased: false,
+                }
+            }
+            Left => Term::Variable(Index(
+                var_ptrs
+                    .iter()
+                    .rev()
+                    .enumerate()
+                    .find(|a| a.1 == &port)
+                    .unwrap()
+                    .0,
+            )),
+            Right => {
+                let a_port = net.follow(<N::Port as PortExt>::new(port.address(), Slot::Left));
+                let argument = Box::new(build_term(net, a_port, var_ptrs, dup_exit));
+
+                let a_port = net.follow(<N::Port as PortExt>::new(port.address(), Slot::Principal));
+                let function = Box::new(build_term(net, a_port, var_ptrs, dup_exit));
+
+                Term::Apply {
+                    function,
+                    argument,
+                    erased: false,
+                }
+            }
+        }
+    } else {
+        match port.slot() {
+            Slot::Principal => {
+                let exit = dup_exit.pop().unwrap();
+                let term = build_term(
+                    net,
+                    net.follow(<N::Port as PortExt>::new(port.address(), exit)),
+                    var_ptrs,
+                    dup_exit,
+                );
+                dup_exit.push(exit);
+                term
+            }
+            _ => {
+                dup_exit.push(port.slot());
+                let term = build_term(
+                    net,
+                    net.follow(<N::Port as PortExt>::new(port.address(), Slot::Principal)),
+                    var_ptrs,
+                    dup_exit,
+                );
+                dup_exit.pop();
+                term
+            }
+        }
+    }
+}
+
+pub trait VisitNetExt: VisitNet
+where
+    Self::Port: PartialEq,
+{
+    fn read_term<T>(&self, port: Self::Port) -> Term<T>;
+}
+
+impl<T: VisitNet> VisitNetExt for T
+where
+    Self::Port: PartialEq,
+{
+    fn read_term<U>(&self, port: <Self as VisitNet>::Port) -> Term<U> {
+        build_term(self, port, &mut vec![], &mut vec![])
     }
 }
