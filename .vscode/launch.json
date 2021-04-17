@@ -32,14 +32,17 @@
                     "build",
                     "--bin=welkin-core",
                     "--package=welkin-core",
-                    "--features=accelerated,graphviz"
+                    "--features=accelerated,graphviz",
                 ],
                 "filter": {
                     "name": "welkin-core",
                     "kind": "bin"
                 }
             },
-            "args": [],
+            "args": [
+                "example.wc",
+                "main"
+            ],
             "cwd": "${workspaceFolder}"
         },
         {

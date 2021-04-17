@@ -25,7 +25,6 @@ fn parse<V: Primitives<String>>(term: &str) -> Term<String, V> {
 
 fn check<V: Primitives<String> + Clone>(ty: Term<String, V>, term: Term<String, V>)
 where
-    Term<String, V>: PartialEq,
     V: Show,
 {
     let definitions = HashMap::new();
@@ -41,7 +40,6 @@ fn check_with<V: Primitives<String> + Clone, D: TypedDefinitions<String, V>>(
     term: Term<String, V>,
     definitions: &D,
 ) where
-    Term<String, V>: PartialEq,
     V: Show,
 {
     // TODO stratification check
@@ -55,9 +53,8 @@ fn normalizes_to<V: Primitives<String> + Clone, D: TypedDefinitions<String, V>>(
     target: Term<String, V>,
     definitions: &D,
 ) where
-    Term<String, V>: PartialEq,
     V: Show,
 {
     term.normalize(definitions).unwrap();
-    assert_eq!(term, target);
+    assert!(term.equivalent(&target, definitions).unwrap());
 }

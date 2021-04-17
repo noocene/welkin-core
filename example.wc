@@ -62,4 +62,22 @@ dup : _,A:* +,:
     : X = x
     . \a (X (X a))
 
-main : Bool = (not true)
+vnil : +,A:* ((Vect A) zero) =
+    \A /P \nil nil
+
+Vect : +,A:* +,size:Nat * =
+    \A \size _vect,prop:
+        +,size:Nat
+        +,:((Vect A) size)
+        *
+    +,nil:((prop zero) (vnil A))
+    ((prop size) vect)
+
+Equal : +,A:* +,b:A * =
+    \A \b _equal,prop:
+        +,b:A
+        +,:((Equal A) b)
+        *
+    ((prop b) equal)
+
+main : (Vect Bool zero) = (vnil Bool)

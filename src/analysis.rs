@@ -68,9 +68,8 @@ impl<T, V: Primitives<T>> Term<T, V> {
         definitions: &U,
     ) -> Result<(), AnalysisError<T, V>>
     where
-        T: Clone,
-        V: Clone,
-        Term<T, V>: PartialEq,
+        T: Show + Clone + PartialEq,
+        V: Show + Clone,
     {
         use Term::*;
 
@@ -141,9 +140,8 @@ impl<T, V: Primitives<T>> Term<T, V> {
                 }
             }
             _ => {
-                let mut inferred = self.infer(definitions)?;
-                inferred.lazy_normalize(definitions)?;
-                if inferred != reduced {
+                let inferred = self.infer(definitions)?;
+                if !inferred.equivalent(&reduced, definitions)? {
                     Err(AnalysisError::TypeError {
                         expected: reduced.clone(),
                         got: inferred,
@@ -158,9 +156,8 @@ impl<T, V: Primitives<T>> Term<T, V> {
         definitions: &U,
     ) -> Result<Term<T, V>, AnalysisError<T, V>>
     where
-        T: Clone,
-        V: Clone,
-        Term<T, V>: PartialEq,
+        T: Show + Clone + PartialEq,
+        V: Show + Clone,
     {
         use Term::*;
 
@@ -250,9 +247,9 @@ impl<T, V: Primitives<T>> Term<T, V> {
             Variable { .. } => self.clone(),
 
             Wrap(expression) => {
-                let mut expression_ty = expression.infer(definitions)?;
-                expression_ty.lazy_normalize(definitions)?;
-                if expression_ty != Universe {
+                let expression_ty = expression.infer(definitions)?;
+                if let Term::Universe = expression_ty {
+                } else {
                     Err(AnalysisError::InvalidWrap {
                         got: expression_ty,
                         wrap: self.clone(),

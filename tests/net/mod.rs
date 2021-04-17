@@ -41,9 +41,11 @@ fn round_trip(term: &str) {
     {
         let net = accelerated::normalize_accelerated(net);
         let term = net.read_term(net.get(Index(0)).ports().principal);
-        assert_eq!(normalized, term);
+        assert!(normalized.equivalent(&term, &definitions).unwrap());
     }
-    assert_eq!(normalized, net_normalized);
+    assert!(normalized
+        .equivalent(&net_normalized, &definitions)
+        .unwrap());
 }
 
 #[test]
