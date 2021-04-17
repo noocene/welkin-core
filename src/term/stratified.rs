@@ -165,14 +165,7 @@ impl<T> Term<T> {
                 expression.is_stratified(definitions)?;
                 body.is_stratified(definitions)?;
             }
-            Reference(reference) => {
-                if let Some(term) = definitions.get(reference) {
-                    term.is_stratified(definitions)?;
-                } else {
-                    return Err(StratificationError::UndefinedReference(reference.clone()));
-                }
-            }
-            Variable(_) | Universe => {}
+            Variable(_) | Reference(_) | Universe => {}
             Primitive(_) => todo!(),
 
             Wrap(term) => term.is_stratified(definitions)?,
