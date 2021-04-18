@@ -43,6 +43,14 @@ pub trait Definitions<T, U: Primitives<T> = None> {
     fn get(&self, name: &T) -> Option<&Term<T, U>>;
 }
 
+pub struct Empty;
+
+impl<T, U: Primitives<T>> TypedDefinitions<T, U> for Empty {
+    fn get_typed(&self, _: &T) -> Option<&(Term<T, U>, Term<T, U>)> {
+        None
+    }
+}
+
 pub trait TypedDefinitions<T, U: Primitives<T> = None> {
     fn get_typed(&self, name: &T) -> Option<&(Term<T, U>, Term<T, U>)>;
 }
