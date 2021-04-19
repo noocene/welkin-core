@@ -277,36 +277,6 @@ impl<T, V: Primitives<T>> Term<T, V> {
             Put(term) => {
                 term.lazy_normalize(definitions)?;
             }
-            Duplicate { body, expression } => {
-                expression.lazy_normalize(definitions)?;
-                match &**expression {
-                    Put(expression) => {
-                        body.substitute_top(expression);
-                        body.lazy_normalize(definitions)?;
-                        *self = *body.clone();
-                    }
-                    Duplicate {
-                        expression,
-                        body: new_body,
-                    } => {
-                        body.shift(Index::top().child());
-                        let dup = Duplicate {
-                            body: body.clone(),
-                            expression: new_body.clone(),
-                        };
-                        let mut term = Duplicate {
-                            expression: expression.clone(),
-                            body: Box::new(dup),
-                        };
-                        term.lazy_normalize(definitions)?;
-                        *self = term;
-                    }
-                    Lambda { .. } => Err(NormalizationError::InvalidDuplication)?,
-                    _ => {
-                        body.lazy_normalize(definitions)?;
-                    }
-                }
-            }
             Apply {
                 function,
                 argument,
@@ -338,7 +308,7 @@ impl<T, V: Primitives<T>> Term<T, V> {
                     }
                 }
             }
-            Variable(_) | Lambda { .. } => {}
+            Variable(_) | Lambda { .. } | Duplicate { .. } => {}
             Primitive(_) => todo!(),
 
             Universe | Function { .. } => {}

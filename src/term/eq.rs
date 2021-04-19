@@ -74,8 +74,8 @@ impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>> Term<T, V> {
                     ) => {
                         a_body.substitute_top(&Term::Variable(index));
                         b_body.substitute_top(&Term::Variable(index));
-                        equivalence_helper(a_body, b_body, index.child(), definitions)?
-                            && a_erased == b_erased
+                        a_erased == b_erased
+                            && equivalence_helper(a_body, b_body, index.child(), definitions)?
                     }
                     (Put(a), Put(b)) => equivalence_helper(a, b, index, definitions)?,
                     (
@@ -105,8 +105,8 @@ impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>> Term<T, V> {
                             argument: b_argument,
                         },
                     ) => {
-                        equivalence_helper(a_function, b_function, index, definitions)?
-                            && a_erased == b_erased
+                        a_erased == b_erased
+                            && equivalence_helper(a_function, b_function, index, definitions)?
                             && equivalence_helper(a_argument, b_argument, index, definitions)?
                     }
                     (Reference(a), Reference(b)) => a == b,
@@ -114,12 +114,12 @@ impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>> Term<T, V> {
                         Function {
                             return_type: mut a_return_type,
                             argument_type: a_argument_type,
-                            erased: a_erased,
+                            ..
                         },
                         Function {
                             return_type: mut b_return_type,
                             argument_type: b_argument_type,
-                            erased: b_erased,
+                            ..
                         },
                     ) => {
                         a_return_type.substitute(Index::top().child(), &Term::Variable(index));
@@ -131,13 +131,12 @@ impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>> Term<T, V> {
                             b_return_type,
                             index.child().child(),
                             definitions,
-                        )? && a_erased == b_erased
-                            && equivalence_helper(
-                                a_argument_type,
-                                b_argument_type,
-                                index,
-                                definitions,
-                            )?
+                        )? && equivalence_helper(
+                            a_argument_type,
+                            b_argument_type,
+                            index,
+                            definitions,
+                        )?
                     }
                     (Universe, Universe) => true,
                     (
@@ -183,11 +182,8 @@ impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>> Term<T, V> {
             Ok(eq)
         }
 
-        let mut a = Box::new(self.clone());
-        let mut b = Box::new(other.clone());
-
-        a.lazy_normalize(definitions)?;
-        b.lazy_normalize(definitions)?;
+        let a = Box::new(self.clone());
+        let b = Box::new(other.clone());
 
         equivalence_helper(a, b, Index::top(), definitions)
     }
