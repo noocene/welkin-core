@@ -159,36 +159,12 @@ impl<T, V: Primitives<T>> Term<T, V> {
             }
             Put(term) => {
                 term.normalize(definitions)?;
+                *self = replace(term, Term::Universe);
             }
             Duplicate { body, expression } => {
-                expression.normalize(definitions)?;
-                match &**expression {
-                    Put(expression) => {
-                        body.substitute_top(expression);
-                        body.normalize(definitions)?;
-                        *self = replace(body, Universe);
-                    }
-                    Duplicate {
-                        expression,
-                        body: new_body,
-                    } => {
-                        body.shift(Index::top().child());
-                        let dup = Duplicate {
-                            body: body.clone(),
-                            expression: new_body.clone(),
-                        };
-                        let mut term = Duplicate {
-                            expression: expression.clone(),
-                            body: Box::new(dup),
-                        };
-                        term.normalize(definitions)?;
-                        *self = term;
-                    }
-                    Lambda { .. } => Err(NormalizationError::InvalidDuplication)?,
-                    _ => {
-                        body.normalize(definitions)?;
-                    }
-                }
+                body.substitute_top(expression);
+                body.normalize(definitions)?;
+                *self = replace(body, Term::Universe);
             }
             Apply {
                 function,
@@ -287,7 +263,7 @@ impl<T, V: Primitives<T>> Term<T, V> {
                 match *function {
                     Put(_) => Err(NormalizationError::InvalidApplication)?,
                     Duplicate { body, expression } => {
-                        let mut argument = argument.clone();
+                        let mut argument = Box::new(replace(&mut **argument, Term::Universe));
                         argument.shift_top();
                         let body = Box::new(Apply {
                             function: body,
@@ -308,8 +284,34 @@ impl<T, V: Primitives<T>> Term<T, V> {
                     }
                 }
             }
-            Variable(_) | Lambda { .. } | Duplicate { .. } => {}
+            Variable(_) | Lambda { .. } => {}
             Primitive(_) => todo!(),
+
+            Duplicate { body, expression } => {
+                expression.lazy_normalize(definitions)?;
+                match &mut **expression {
+                    Put(term) => {
+                        body.substitute_top(term);
+                        body.lazy_normalize(definitions)?;
+                        *self = replace(body, Term::Universe);
+                    }
+                    Duplicate {
+                        body: sub_body,
+                        expression: sub_expression,
+                    } => {
+                        body.shift(Index::top().child());
+                        let dup = Duplicate {
+                            body: Box::new(replace(&mut **body, Term::Universe)),
+                            expression: Box::new(replace(sub_body, Term::Universe)),
+                        };
+                        *self = Duplicate {
+                            expression: Box::new(replace(sub_expression, Term::Universe)),
+                            body: Box::new(dup),
+                        };
+                    }
+                    _ => {}
+                }
+            }
 
             Universe | Function { .. } => {}
             Wrap(term) => {
