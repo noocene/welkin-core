@@ -2,25 +2,48 @@ use derivative::Derivative;
 
 use crate::convert::{NetBuilderExt, NetError};
 
-use super::{debug_reference, normalize::NormalizationError, Definitions, Index, Show, Term};
+use super::{
+    alloc::{Allocator, System},
+    debug_reference,
+    normalize::NormalizationError,
+    Definitions, Index, None, Primitives, Show, Term,
+};
 
-#[derive(Clone)]
-pub struct Stratified<'a, T, U: Definitions<T>>(pub(crate) Term<T>, pub(crate) &'a U);
+pub struct Stratified<'a, 'b, T, U: Definitions<T, V, A>, V: Primitives<T>, A: Allocator<T, V>>(
+    pub(crate) Term<T, V, A>,
+    pub(crate) &'a U,
+    pub(crate) &'b A,
+);
 
-impl<'a, T, U: Definitions<T>> Stratified<'a, T, U> {
+impl<'a, 'b, T: Clone, U: Definitions<T, V, A>, V: Primitives<T> + Clone, A: Allocator<T, V>> Clone
+    for Stratified<'a, 'b, T, U, V, A>
+{
+    fn clone(&self) -> Self {
+        Stratified(self.2.copy(&self.0), self.1, self.2)
+    }
+}
+
+impl<'a, 'b, T, U: Definitions<T, V, A>, V: Primitives<T>, A: Allocator<T, V>>
+    Stratified<'a, 'b, T, U, V, A>
+{
     pub fn normalize(&mut self) -> Result<(), NormalizationError>
     where
         T: Clone,
+        V: Clone,
     {
-        self.0.normalize(self.1)?;
+        self.0.normalize_in(self.1, self.2)?;
         Ok(())
     }
 
-    pub fn into_inner(self) -> Term<T> {
+    pub fn into_inner(self) -> Term<T, V, A> {
         self.0
     }
+}
 
-    pub fn into_net<N: NetBuilderExt<T, U>>(self) -> Result<N::Net, NetError<T>> {
+impl<'a, 'b, T, U: Definitions<T, None, A>, A: Allocator<T, None>>
+    Stratified<'a, 'b, T, U, None, A>
+{
+    pub fn into_net<N: NetBuilderExt<T, U, None, A>>(self) -> Result<N::Net, NetError<T, None, A>> {
         N::build_net(self)
     }
 }
@@ -28,16 +51,19 @@ impl<'a, T, U: Definitions<T>> Stratified<'a, T, U> {
 #[derive(Derivative)]
 #[derivative(Debug(bound = "T: Show"))]
 pub enum StratificationError<T> {
-    MultiplicityMismatch(Term<T>),
-    AffineUsedInBox(Term<T>),
-    DupNonUnitBoxMultiplicity(Term<T>),
+    MultiplicityMismatch,
+    AffineUsedInBox,
+    DupNonUnitBoxMultiplicity,
     UndefinedReference(#[derivative(Debug(format_with = "debug_reference"))] T),
-    ErasedUsed(Term<T>),
+    ErasedUsed,
 }
 
-impl<T> Term<T> {
+impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
     fn uses(&self) -> usize {
-        fn uses_helper<T>(term: &Term<T>, variable: Index) -> usize {
+        fn uses_helper<T, V: Primitives<T>, A: Allocator<T, V>>(
+            term: &Term<T, V, A>,
+            variable: Index,
+        ) -> usize {
             use Term::*;
             match term {
                 Variable(index) => {
@@ -86,8 +112,8 @@ impl<T> Term<T> {
     fn is_boxed_n_times(&self, nestings: usize) -> bool {
         use Term::*;
 
-        fn n_boxes_helper<T>(
-            this: &Term<T>,
+        fn n_boxes_helper<T, V: Primitives<T>, A: Allocator<T, V>>(
+            this: &Term<T, V, A>,
             variable: Index,
             nestings: usize,
             current_nestings: usize,
@@ -124,10 +150,7 @@ impl<T> Term<T> {
         n_boxes_helper(self, Index::top(), nestings, 0)
     }
 
-    pub fn is_stratified<U: Definitions<T>>(
-        &self,
-        definitions: &U,
-    ) -> Result<(), StratificationError<T>>
+    pub fn is_stratified(&self) -> Result<(), StratificationError<T>>
     where
         T: Clone,
     {
@@ -136,37 +159,37 @@ impl<T> Term<T> {
         match &self {
             Lambda { body, erased } => {
                 if body.uses() > if *erased { 0 } else { 1 } {
-                    return Err(StratificationError::MultiplicityMismatch(self.clone()));
+                    return Err(StratificationError::MultiplicityMismatch);
                 }
                 if !body.is_boxed_n_times(0) {
-                    return Err(StratificationError::AffineUsedInBox(self.clone()));
+                    return Err(StratificationError::AffineUsedInBox);
                 }
 
-                body.is_stratified(definitions)?;
+                body.is_stratified()?;
             }
             Apply {
                 function, argument, ..
             } => {
-                function.is_stratified(definitions)?;
-                argument.is_stratified(definitions)?;
+                function.is_stratified()?;
+                argument.is_stratified()?;
             }
             Put(term) => {
-                term.is_stratified(definitions)?;
+                term.is_stratified()?;
             }
             Duplicate { body, expression } => {
                 if !body.is_boxed_n_times(1) {
-                    return Err(StratificationError::DupNonUnitBoxMultiplicity(self.clone()));
+                    return Err(StratificationError::DupNonUnitBoxMultiplicity);
                 }
-                expression.is_stratified(definitions)?;
-                body.is_stratified(definitions)?;
+                expression.is_stratified()?;
+                body.is_stratified()?;
             }
             Variable(_) | Reference(_) | Universe => {}
             Primitive(_) => todo!(),
 
-            Wrap(term) => term.is_stratified(definitions)?,
+            Wrap(term) => term.is_stratified()?,
             Annotation { expression, ty, .. } => {
-                expression.is_stratified(definitions)?;
-                ty.is_stratified(definitions)?;
+                expression.is_stratified()?;
+                ty.is_stratified()?;
             }
             Function {
                 argument_type,
@@ -174,8 +197,8 @@ impl<T> Term<T> {
                 erased,
             } => {
                 if !erased {
-                    argument_type.is_stratified(definitions)?;
-                    return_type.is_stratified(definitions)?;
+                    argument_type.is_stratified()?;
+                    return_type.is_stratified()?;
                 }
             }
         }
@@ -183,14 +206,29 @@ impl<T> Term<T> {
         Ok(())
     }
 
-    pub fn stratified<U: Definitions<T>>(
+    pub fn stratified_in<'a, 'b, U: Definitions<T, V, A>>(
         self,
-        definitions: &U,
-    ) -> Result<Stratified<'_, T, U>, StratificationError<T>>
+        definitions: &'a U,
+        allocator: &'b A,
+    ) -> Result<Stratified<'a, 'b, T, U, V, A>, StratificationError<T>>
     where
         T: Clone,
     {
-        self.is_stratified(definitions)?;
-        Ok(Stratified(self, definitions))
+        self.is_stratified()?;
+        Ok(Stratified(self, definitions, allocator))
+    }
+}
+
+static SYSTEM: &'static System = &System;
+
+impl<T, V: Primitives<T>> Term<T, V, System> {
+    pub fn stratified<'a, 'b, U: Definitions<T, V, System>>(
+        self,
+        definitions: &'a U,
+    ) -> Result<Stratified<'a, 'b, T, U, V, System>, StratificationError<T>>
+    where
+        T: Clone,
+    {
+        self.stratified_in(definitions, SYSTEM)
     }
 }

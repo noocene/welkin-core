@@ -1,5 +1,7 @@
-use std::{borrow::Cow, fmt::Debug};
+use std::fmt::Debug;
 
+pub mod alloc;
+use alloc::{Allocator, IntoInner, System, Zero};
 mod eq;
 mod index;
 mod map_primitive;
@@ -10,7 +12,7 @@ mod parse;
 mod show;
 mod stratified;
 
-pub use crate::analysis::{Definitions, TypedDefinitions};
+pub use crate::analysis::{AnalysisError, DefinitionResult, Definitions, TypedDefinitions};
 pub use normalize::NormalizationError;
 #[cfg(feature = "parser")]
 pub use parse::{parse, typed, untyped, ParseError};
@@ -32,47 +34,45 @@ impl Show for None {
     }
 }
 
-pub trait Primitives<T> {
-    fn ty(&self) -> Cow<'_, Term<T, Self>>
-    where
-        T: Clone,
-        Self: Clone;
+pub trait Primitives<T>: Sized {
+    fn ty<A: Allocator<T, Self>>(&self, alloc: &A) -> Term<T, Self, A>;
 
-    fn apply(&self, argument: &Term<T, Self>) -> Term<T, Self>
+    fn apply<A: Allocator<T, Self>>(
+        &self,
+        argument: &Term<T, Self, A>,
+        alloc: &A,
+    ) -> Term<T, Self, A>
     where
         Self: Sized;
 }
 
 impl<T> Primitives<T> for None {
-    fn ty(&self) -> Cow<'_, Term<T>>
-    where
-        T: Clone,
-    {
+    fn ty<A: Allocator<T, Self>>(&self, _: &A) -> Term<T, Self, A> {
         panic!()
     }
 
-    fn apply(&self, _: &Term<T>) -> Term<T> {
+    fn apply<A: Allocator<T, Self>>(&self, _: &Term<T, Self, A>, _: &A) -> Term<T, Self, A> {
         panic!()
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-pub enum Term<T, U: Primitives<T> = None> {
+#[derive(Serialize, Deserialize)]
+pub enum Term<T, U: Primitives<T> = None, A: Allocator<T, U> = System> {
     // Untyped language
     Variable(Index),
     Lambda {
-        body: Box<Term<T, U>>,
+        body: A::Box,
         erased: bool,
     },
     Apply {
-        function: Box<Term<T, U>>,
-        argument: Box<Term<T, U>>,
+        function: A::Box,
+        argument: A::Box,
         erased: bool,
     },
-    Put(Box<Term<T, U>>),
+    Put(A::Box),
     Duplicate {
-        expression: Box<Term<T, U>>,
-        body: Box<Term<T, U>>,
+        expression: A::Box,
+        body: A::Box,
     },
     Reference(T),
     Primitive(U),
@@ -80,14 +80,14 @@ pub enum Term<T, U: Primitives<T> = None> {
     // Typed extensions
     Universe,
     Function {
-        argument_type: Box<Term<T, U>>,
-        return_type: Box<Term<T, U>>,
+        argument_type: A::Box,
+        return_type: A::Box,
         erased: bool,
     },
     Annotation {
         checked: bool,
-        expression: Box<Term<T, U>>,
-        ty: Box<Term<T, U>>,
+        expression: A::Box,
+        ty: A::Box,
     },
-    Wrap(Box<Term<T, U>>),
+    Wrap(A::Box),
 }

@@ -11,7 +11,7 @@ fn check_all(terms: &str) {
 
     let definitions: HashMap<_, _> = definitions.terms.into_iter().collect();
     for (_, def) in &definitions {
-        def.1.is_stratified(&definitions).unwrap();
+        def.1.is_stratified().unwrap();
         def.0.check(&Term::Universe, &definitions).unwrap();
         def.1.check(&def.0, &definitions).unwrap();
     }

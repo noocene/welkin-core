@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use welkin_core::{
     net::{Index, Net, VisitNetExt},
-    term::{untyped::Definitions, Definitions as Defs, Term},
+    term::{untyped::Definitions, DefinitionResult, Definitions as Defs, Term},
 };
 
 #[cfg(feature = "accelerated")]
@@ -20,8 +20,8 @@ mod accelerated {
 pub struct TestDefinitions(HashMap<String, Term<String>>);
 
 impl Defs<String> for TestDefinitions {
-    fn get(&self, name: &String) -> Option<&Term<String>> {
-        self.0.get(name)
+    fn get(&self, name: &String) -> Option<DefinitionResult<Term<String>>> {
+        self.0.get(name).map(DefinitionResult::Borrowed)
     }
 }
 

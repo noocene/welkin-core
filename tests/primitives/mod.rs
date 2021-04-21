@@ -1,5 +1,5 @@
-use std::{borrow::Cow, collections::HashMap, fmt::Display};
-use welkin_core::term::{Primitives, Term};
+use std::{collections::HashMap, fmt::Display};
+use welkin_core::term::{alloc::Allocator, Primitives, Term};
 
 use crate::{check, check_with, normalizes_to, parse};
 
@@ -15,15 +15,19 @@ fn ty_id() {
     }
 
     impl Primitives<String> for TyId {
-        fn ty(&self) -> Cow<'_, Term<String, Self>> {
-            Cow::Owned(Term::Function {
+        fn ty<A: Allocator<String, Self>>(&self, alloc: &A) -> Term<String, Self, A> {
+            Term::Function {
                 erased: false,
-                argument_type: Box::new(Term::Universe),
-                return_type: Box::new(Term::Universe),
-            })
+                argument_type: alloc.alloc(Term::Universe),
+                return_type: alloc.alloc(Term::Universe),
+            }
         }
 
-        fn apply(&self, _: &Term<String, Self>) -> Term<String, Self>
+        fn apply<A: Allocator<String, Self>>(
+            &self,
+            _: &Term<String, Self, A>,
+            _: &A,
+        ) -> Term<String, Self, A>
         where
             Self: Sized,
         {
@@ -66,19 +70,23 @@ fn unit_id() {
     }
 
     impl Primitives<String> for UnitId {
-        fn ty(&self) -> Cow<'_, Term<String, Self>> {
-            Cow::Owned(Term::Function {
+        fn ty<A: Allocator<String, Self>>(&self, alloc: &A) -> Term<String, Self, A> {
+            Term::Function {
                 erased: false,
-                argument_type: Box::new(parse("Unit")),
-                return_type: Box::new(parse("Unit")),
-            })
+                argument_type: alloc.alloc(Term::Reference("Unit".into())),
+                return_type: alloc.alloc(Term::Reference("Unit".into())),
+            }
         }
 
-        fn apply(&self, term: &Term<String, Self>) -> Term<String, Self>
+        fn apply<A: Allocator<String, Self>>(
+            &self,
+            term: &Term<String, Self, A>,
+            alloc: &A,
+        ) -> Term<String, Self, A>
         where
             Self: Sized,
         {
-            term.clone()
+            alloc.copy(term)
         }
     }
 

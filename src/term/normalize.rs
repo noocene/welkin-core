@@ -1,6 +1,6 @@
 use std::mem::replace;
 
-use super::{Definitions, Index, Primitives, Term};
+use super::{alloc::Reallocate, Allocator, Definitions, Index, IntoInner, Primitives, Term, Zero};
 
 #[derive(Debug)]
 pub enum NormalizationError {
@@ -8,7 +8,7 @@ pub enum NormalizationError {
     InvalidApplication,
 }
 
-impl<T, V: Primitives<T>> Term<T, V> {
+impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
     pub(crate) fn shift(&mut self, replaced: Index) {
         use Term::*;
 
@@ -56,17 +56,7 @@ impl<T, V: Primitives<T>> Term<T, V> {
         self.shift(Index::top())
     }
 
-    pub(crate) fn substitute_shifted(&mut self, variable: Index, term: &Term<T, V>)
-    where
-        T: Clone,
-        V: Clone,
-    {
-        let mut term = term.clone();
-        term.shift_top();
-        self.substitute(variable.child(), &term)
-    }
-
-    pub fn substitute(&mut self, variable: Index, term: &Term<T, V>)
+    pub fn substitute_in(&mut self, variable: Index, term: &Term<T, V, A>, alloc: &A)
     where
         T: Clone,
         V: Clone,
@@ -76,63 +66,173 @@ impl<T, V: Primitives<T>> Term<T, V> {
         match self {
             Variable(idx) => {
                 if variable == *idx {
-                    *self = term.clone();
+                    *self = alloc.copy(term);
                 } else if idx.within(variable) {
                     *idx = idx.parent();
                 }
             }
             Lambda { body, .. } => {
-                body.substitute_shifted(variable, term);
+                body.substitute_shifted_in(variable, term, alloc);
             }
             Apply {
                 function, argument, ..
             } => {
-                function.substitute(variable, term);
-                argument.substitute(variable, term);
+                function.substitute_in(variable, term, alloc);
+                argument.substitute_in(variable, term, alloc);
             }
             Put(expr) => {
-                expr.substitute(variable, term);
+                expr.substitute_in(variable, term, alloc);
             }
             Duplicate {
                 body, expression, ..
             } => {
-                expression.substitute(variable, term);
-                body.substitute_shifted(variable, term);
+                expression.substitute_in(variable, term, alloc);
+                body.substitute_shifted_in(variable, term, alloc);
             }
             Reference(_) | Universe => {}
             Primitive(_) => todo!(),
 
-            Wrap(expr) => expr.substitute(variable, term),
+            Wrap(expr) => expr.substitute_in(variable, term, alloc),
             Annotation { expression, ty, .. } => {
-                expression.substitute(variable, term);
-                ty.substitute(variable, term);
+                expression.substitute_in(variable, term, alloc);
+                ty.substitute_in(variable, term, alloc);
             }
             Function {
                 argument_type,
                 return_type,
                 ..
             } => {
-                argument_type.substitute(variable, term);
+                argument_type.substitute_in(variable, term, alloc);
 
-                let mut term = term.clone();
+                let mut term = alloc.copy(term);
                 term.shift_top();
                 term.shift_top();
-                return_type.substitute(variable.child().child(), &term);
+                return_type.substitute_in(variable.child().child(), &term, alloc);
             }
         }
     }
 
-    pub fn substitute_top(&mut self, term: &Term<T, V>)
+    pub(crate) fn substitute_shifted_in(&mut self, variable: Index, term: &Term<T, V, A>, alloc: &A)
     where
         T: Clone,
         V: Clone,
     {
-        self.substitute(Index::top(), term)
+        let mut term = alloc.copy(term);
+        term.shift_top();
+        self.substitute_in(variable.child(), &term, alloc)
     }
 
-    pub fn normalize<U: Definitions<T, V>>(
+    pub fn substitute_top_in(&mut self, term: &Term<T, V, A>, alloc: &A)
+    where
+        T: Clone,
+        V: Clone,
+    {
+        self.substitute_in(Index::top(), term, alloc)
+    }
+
+    pub(crate) fn lazy_normalize_in<U: Definitions<T, V, B>, B: Allocator<T, V>>(
         &mut self,
         definitions: &U,
+        alloc: &A,
+    ) -> Result<(), NormalizationError>
+    where
+        T: Clone,
+        V: Clone,
+        A: Reallocate<T, V, B>,
+    {
+        use Term::*;
+
+        match self {
+            Reference(binding) => {
+                if let Some(term) = definitions.get(binding).map(|term| {
+                    let mut term = alloc.reallocating_copy(term.as_ref());
+                    term.lazy_normalize_in(definitions, alloc)?;
+                    Ok(term)
+                }) {
+                    *self = term?;
+                }
+            }
+            Put(term) => {
+                term.lazy_normalize_in(definitions, alloc)?;
+            }
+            Apply {
+                function,
+                argument,
+                erased,
+            } => {
+                function.lazy_normalize_in(definitions, alloc)?;
+                let f = replace(&mut **function, Term::Universe);
+                match f {
+                    Put(_) => Err(NormalizationError::InvalidApplication)?,
+                    Duplicate { body, expression } => {
+                        let mut argument = alloc.alloc(replace(&mut **argument, Term::Universe));
+                        argument.shift_top();
+                        let body = alloc.alloc(Apply {
+                            function: body,
+                            argument,
+                            erased: *erased,
+                        });
+                        *self = Duplicate { expression, body };
+                    }
+                    Lambda { mut body, .. } => {
+                        body.substitute_top_in(argument, alloc);
+                        body.lazy_normalize_in(definitions, alloc)?;
+                        *self = body.into_inner();
+                    }
+                    Primitive(prim) => {
+                        *self = prim.apply(argument, alloc);
+                    }
+                    _ => {
+                        *function = alloc.alloc(f);
+                        argument.lazy_normalize_in(definitions, alloc)?;
+                    }
+                }
+            }
+            Variable(_) | Primitive(_) | Lambda { .. } => {}
+
+            Duplicate { body, expression } => {
+                expression.lazy_normalize_in(definitions, alloc)?;
+                match &mut **expression {
+                    Put(term) => {
+                        body.substitute_top_in(term, alloc);
+                        body.lazy_normalize_in(definitions, alloc)?;
+                        *self = replace(body, Term::Universe);
+                    }
+                    Duplicate {
+                        body: sub_body,
+                        expression: sub_expression,
+                    } => {
+                        body.shift(Index::top().child());
+                        let dup = Duplicate {
+                            body: alloc.alloc(replace(&mut **body, Term::Universe)),
+                            expression: alloc.alloc(replace(&mut **sub_body, Term::Universe)),
+                        };
+                        *self = Duplicate {
+                            expression: alloc.alloc(replace(sub_expression, Term::Universe)),
+                            body: alloc.alloc(dup),
+                        };
+                    }
+                    _ => {}
+                }
+            }
+
+            Universe | Function { .. } => {}
+            Wrap(term) => {
+                term.lazy_normalize_in(definitions, alloc)?;
+            }
+            Annotation { expression, .. } => {
+                expression.lazy_normalize_in(definitions, alloc)?;
+                *self = replace(expression, Term::Universe);
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn normalize_in<U: Definitions<T, V, A>>(
+        &mut self,
+        definitions: &U,
+        alloc: &A,
     ) -> Result<(), NormalizationError>
     where
         T: Clone,
@@ -143,27 +243,27 @@ impl<T, V: Primitives<T>> Term<T, V> {
         match self {
             Reference(binding) => {
                 if let Some(term) = definitions.get(binding).map(|term| {
-                    let mut term = term.clone();
-                    term.normalize(definitions)?;
+                    let mut term = alloc.copy(term.as_ref());
+                    term.normalize_in(definitions, alloc)?;
                     Ok(term)
                 }) {
                     *self = term?;
                 }
             }
             Lambda { body, erased, .. } => {
-                body.normalize(definitions)?;
+                body.normalize_in(definitions, alloc)?;
                 if *erased {
-                    body.substitute_top(&Term::Variable(Index::top()));
+                    body.substitute_top_in(&Term::Variable(Index::top()), alloc);
                     *self = replace(&mut *body, Universe);
                 }
             }
             Put(term) => {
-                term.normalize(definitions)?;
+                term.normalize_in(definitions, alloc)?;
                 *self = replace(term, Term::Universe);
             }
             Duplicate { body, expression } => {
-                body.substitute_top(expression);
-                body.normalize(definitions)?;
+                body.substitute_top_in(expression, alloc);
+                body.normalize_in(definitions, alloc)?;
                 *self = replace(body, Term::Universe);
             }
             Apply {
@@ -171,47 +271,47 @@ impl<T, V: Primitives<T>> Term<T, V> {
                 argument,
                 erased,
             } => {
-                function.normalize(definitions)?;
-                let function = function.clone();
+                function.normalize_in(definitions, alloc)?;
+                let function = alloc.copy(function);
                 if *erased {
-                    *self = *function;
+                    *self = function;
                 } else {
-                    match *function {
+                    match function {
                         Put(_) => Err(NormalizationError::InvalidApplication)?,
                         Primitive(primitive) => {
-                            *self = primitive.apply(argument);
+                            *self = primitive.apply(argument, alloc);
                         }
                         Duplicate { body, expression } => {
-                            let mut argument = argument.clone();
+                            let mut argument = alloc.copy_boxed(argument);
                             argument.shift_top();
-                            let body = Box::new(Apply {
+                            let body = alloc.alloc(Apply {
                                 function: body,
                                 argument,
                                 erased: *erased,
                             });
                             let mut term = Duplicate { expression, body };
-                            term.normalize(definitions)?;
+                            term.normalize_in(definitions, alloc)?;
                             *self = term;
                         }
                         Lambda { mut body, .. } => {
-                            body.substitute_top(argument);
-                            body.normalize(definitions)?;
+                            body.substitute_top_in(argument, alloc);
+                            body.normalize_in(definitions, alloc)?;
 
-                            *self = *body;
+                            *self = body.into_inner();
                         }
                         _ => {
-                            argument.normalize(definitions)?;
+                            argument.normalize_in(definitions, alloc)?;
                         }
                     }
                 }
             }
-            Variable(_) | Primitive(_) | Universe => {}
+            Variable(_) | Universe | Primitive(_) => {}
 
             Wrap(term) => {
-                term.normalize(definitions)?;
+                term.normalize_in(definitions, alloc)?;
             }
             Annotation { expression, .. } => {
-                expression.normalize(definitions)?;
+                expression.normalize_in(definitions, alloc)?;
                 *self = replace(expression, Term::Universe);
             }
             Function {
@@ -221,8 +321,8 @@ impl<T, V: Primitives<T>> Term<T, V> {
                 ..
             } => {
                 if !*erased {
-                    argument_type.normalize(definitions)?;
-                    return_type.normalize(definitions)?;
+                    argument_type.normalize_in(definitions, alloc)?;
+                    return_type.normalize_in(definitions, alloc)?;
                 }
             }
         }
@@ -230,99 +330,51 @@ impl<T, V: Primitives<T>> Term<T, V> {
         Ok(())
     }
 
-    pub(crate) fn lazy_normalize<U: Definitions<T, V>>(
+    pub fn normalize<U: Definitions<T, V, A>>(
         &mut self,
         definitions: &U,
     ) -> Result<(), NormalizationError>
     where
         T: Clone,
         V: Clone,
+        A: Zero,
     {
-        use Term::*;
+        let alloc = A::zero();
+        self.normalize_in(definitions, &alloc)
+    }
 
-        match self {
-            Reference(binding) => {
-                if let Some(term) = definitions.get(binding).map(|term| {
-                    let mut term = term.clone();
-                    term.lazy_normalize(definitions)?;
-                    Ok(term)
-                }) {
-                    *self = term?;
-                }
-            }
-            Put(term) => {
-                term.lazy_normalize(definitions)?;
-            }
-            Apply {
-                function,
-                argument,
-                erased,
-            } => {
-                function.lazy_normalize(definitions)?;
-                let function = function.clone();
-                match *function {
-                    Put(_) => Err(NormalizationError::InvalidApplication)?,
-                    Duplicate { body, expression } => {
-                        let mut argument = Box::new(replace(&mut **argument, Term::Universe));
-                        argument.shift_top();
-                        let body = Box::new(Apply {
-                            function: body,
-                            argument,
-                            erased: *erased,
-                        });
-                        let mut term = Duplicate { expression, body };
-                        term.lazy_normalize(definitions)?;
-                        *self = term;
-                    }
-                    Lambda { mut body, .. } => {
-                        body.substitute_top(argument);
-                        body.lazy_normalize(definitions)?;
-                        *self = *body;
-                    }
-                    _ => {
-                        argument.lazy_normalize(definitions)?;
-                    }
-                }
-            }
-            Variable(_) | Lambda { .. } => {}
-            Primitive(_) => todo!(),
+    pub fn lazy_normalize<U: Definitions<T, V, A>>(
+        &mut self,
+        definitions: &U,
+    ) -> Result<(), NormalizationError>
+    where
+        T: Clone,
+        V: Clone,
+        A: Zero + Reallocate<T, V, A>,
+    {
+        let alloc = A::zero();
+        self.lazy_normalize_in(definitions, &alloc)
+    }
 
-            Duplicate { body, expression } => {
-                expression.lazy_normalize(definitions)?;
-                match &mut **expression {
-                    Put(term) => {
-                        body.substitute_top(term);
-                        body.lazy_normalize(definitions)?;
-                        *self = replace(body, Term::Universe);
-                    }
-                    Duplicate {
-                        body: sub_body,
-                        expression: sub_expression,
-                    } => {
-                        body.shift(Index::top().child());
-                        let dup = Duplicate {
-                            body: Box::new(replace(&mut **body, Term::Universe)),
-                            expression: Box::new(replace(sub_body, Term::Universe)),
-                        };
-                        *self = Duplicate {
-                            expression: Box::new(replace(sub_expression, Term::Universe)),
-                            body: Box::new(dup),
-                        };
-                    }
-                    _ => {}
-                }
-            }
+    pub fn substitute_top(&mut self, term: &Term<T, V, A>)
+    where
+        T: Clone,
+        V: Clone,
+        A: Zero,
+    {
+        let alloc = A::zero();
 
-            Universe | Function { .. } => {}
-            Wrap(term) => {
-                term.lazy_normalize(definitions)?;
-            }
-            Annotation { expression, .. } => {
-                expression.lazy_normalize(definitions)?;
-                *self = replace(expression, Term::Universe);
-            }
-        }
+        self.substitute_top_in(term, &alloc)
+    }
 
-        Ok(())
+    pub fn substitute(&mut self, variable: Index, term: &Term<T, V, A>)
+    where
+        T: Clone,
+        V: Clone,
+        A: Zero,
+    {
+        let alloc = A::zero();
+
+        self.substitute_in(variable, term, &alloc)
     }
 }

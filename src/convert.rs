@@ -2,22 +2,23 @@ use derivative::Derivative;
 
 use crate::{
     net::{AgentExt, AgentType, NetBuilder, PortExt, Slot, VisitNet},
-    term::{Definitions, Index, Show, Stratified, Term},
+    term::{alloc::Allocator, Definitions, Index, None, Primitives, Show, Stratified, Term},
 };
 
 #[derive(Derivative)]
-#[derivative(Debug(bound = "T: Show"))]
-pub enum NetError<T> {
-    TypedTerm(Term<T>),
+#[derivative(Debug(bound = "T: Show, V: Show"))]
+pub enum NetError<T, V: Primitives<T>, A: Allocator<T, V>> {
+    TypedTerm(Term<T, V, A>),
 }
 
-impl<T> Term<T> {
-    fn build_net<U: Definitions<T>, N: NetBuilder>(
+impl<T, A: Allocator<T, None>> Term<T, None, A> {
+    fn build_net_in<U: Definitions<T, None, A>, N: NetBuilder>(
         &self,
         net: &mut N,
         definitions: &U,
         var_ptrs: &mut Vec<N::Port>,
-    ) -> Result<N::Port, NetError<T>>
+        alloc: &A,
+    ) -> Result<N::Port, NetError<T, None, A>>
     where
         T: Clone,
         N::Port: PartialEq + Clone,
@@ -37,22 +38,22 @@ impl<T> Term<T> {
                     right
                 }
             }
-            Put(term) => term.build_net(net, definitions, var_ptrs)?,
-            Reference(name) => {
-                definitions
-                    .get(name)
-                    .unwrap()
-                    .build_net(net, definitions, var_ptrs)?
-            }
+            Put(term) => term.build_net_in(net, definitions, var_ptrs, alloc)?,
+            Reference(name) => definitions.get(name).unwrap().as_ref().build_net_in(
+                net,
+                definitions,
+                var_ptrs,
+                alloc,
+            )?,
             Lambda { body, erased } => {
                 if *erased {
-                    let mut body = body.clone();
-                    body.substitute_top(&Term::Variable(Index::top()));
-                    body.build_net(net, definitions, var_ptrs)?
+                    let mut body = alloc.copy(body);
+                    body.substitute_top_in(&Term::Variable(Index::top()), alloc);
+                    body.build_net_in(net, definitions, var_ptrs, alloc)?
                 } else {
                     let (principal, left, right) = net.add(AgentType::Delta);
                     var_ptrs.push(left.clone());
-                    let body = body.build_net(net, definitions, var_ptrs)?;
+                    let body = body.build_net_in(net, definitions, var_ptrs, alloc)?;
                     var_ptrs.pop();
                     net.connect(right, body);
                     principal
@@ -61,9 +62,9 @@ impl<T> Term<T> {
             Duplicate {
                 body, expression, ..
             } => {
-                let expression = expression.build_net(net, definitions, var_ptrs)?;
+                let expression = expression.build_net_in(net, definitions, var_ptrs, alloc)?;
                 var_ptrs.push(expression);
-                let body = body.build_net(net, definitions, var_ptrs)?;
+                let body = body.build_net_in(net, definitions, var_ptrs, alloc)?;
                 var_ptrs.pop();
                 body
             }
@@ -74,18 +75,20 @@ impl<T> Term<T> {
                 ..
             } => {
                 if *erased {
-                    function.build_net(net, definitions, var_ptrs)?
+                    function.build_net_in(net, definitions, var_ptrs, alloc)?
                 } else {
                     let (principal, left, right) = net.add(AgentType::Delta);
-                    let function = function.build_net(net, definitions, var_ptrs)?;
+                    let function = function.build_net_in(net, definitions, var_ptrs, alloc)?;
                     net.connect(principal, function);
-                    let argument = argument.build_net(net, definitions, var_ptrs)?;
+                    let argument = argument.build_net_in(net, definitions, var_ptrs, alloc)?;
                     net.connect(left, argument);
                     right
                 }
             }
-            Annotation { expression, .. } => expression.build_net(net, definitions, var_ptrs)?,
-            _ => Err(NetError::TypedTerm(self.clone()))?,
+            Annotation { expression, .. } => {
+                expression.build_net_in(net, definitions, var_ptrs, alloc)?
+            }
+            _ => Err(NetError::TypedTerm(alloc.copy(self)))?,
         })
     }
 }
@@ -98,23 +101,28 @@ mod sealed {
     impl<T: NetBuilder> Sealed for T {}
 }
 
-pub trait NetBuilderExt<T, U: Definitions<T>>: NetBuilder + sealed::Sealed {
-    fn build_net(terms: Stratified<'_, T, U>) -> Result<Self::Net, NetError<T>>
+pub trait NetBuilderExt<T, U: Definitions<T, V, A>, V: Primitives<T>, A: Allocator<T, V>>:
+    NetBuilder + sealed::Sealed
+{
+    fn build_net(terms: Stratified<'_, '_, T, U, V, A>) -> Result<Self::Net, NetError<T, V, A>>
     where
         Self: Sized;
 }
 
-impl<T: NetBuilder, V: Clone, U: Definitions<V>> NetBuilderExt<V, U> for T
+impl<S: NetBuilder, T: Clone, U: Definitions<T, None, A>, A: Allocator<T, None>>
+    NetBuilderExt<T, U, None, A> for S
 where
-    T::Port: PartialEq + Clone,
+    S::Port: PartialEq + Clone,
 {
-    fn build_net(terms: Stratified<'_, V, U>) -> Result<T::Net, NetError<V>>
+    fn build_net(terms: Stratified<'_, '_, T, U, None, A>) -> Result<S::Net, NetError<T, None, A>>
     where
         Self: Sized,
     {
-        let mut net = T::new();
+        let mut net = S::new();
         let mut var_ptrs = vec![];
-        let entry = terms.0.build_net(&mut net, terms.1, &mut var_ptrs)?;
+        let entry = terms
+            .0
+            .build_net_in(&mut net, terms.1, &mut var_ptrs, &terms.2)?;
         Ok(net.build(entry))
     }
 }

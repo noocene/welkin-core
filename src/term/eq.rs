@@ -1,54 +1,64 @@
 use crate::analysis::Empty;
 
-use super::{Definitions, Index, NormalizationError, Primitives, Show, Term};
+use super::{
+    alloc::Reallocate, Allocator, Definitions, IntoInner, NormalizationError, Primitives, Show,
+    Term, Zero,
+};
 
-impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>> Term<T, V> {
-    pub fn equivalent<U: Definitions<T, V>>(
+impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>, A: Allocator<T, V>>
+    Term<T, V, A>
+{
+    pub fn equivalent_in<U: Definitions<T, V, B>, B: Allocator<T, V>>(
         &self,
         other: &Self,
         definitions: &U,
-    ) -> Result<bool, NormalizationError> {
+        alloc: &A,
+    ) -> Result<bool, NormalizationError>
+    where
+        A: Reallocate<T, V, B>,
+    {
         use Term::*;
 
         fn equivalence_helper<
-            U: Definitions<T, V>,
+            U: Definitions<T, V, B>,
             T: Show + PartialEq + Clone,
             V: Show + Primitives<T> + Clone,
+            A: Allocator<T, V> + Reallocate<T, V, B>,
+            B: Allocator<T, V>,
         >(
-            mut a: Box<Term<T, V>>,
-            mut b: Box<Term<T, V>>,
-            index: Index,
+            mut a: A::Box,
+            mut b: A::Box,
             definitions: &U,
+            alloc: &A,
         ) -> Result<bool, NormalizationError> {
             let mut eq = {
-                a.lazy_normalize(&Empty)?;
-                b.lazy_normalize(&Empty)?;
+                a.lazy_normalize_in::<_, B>(&Empty, alloc)?;
+                b.lazy_normalize_in::<_, B>(&Empty, alloc)?;
 
                 match (&*a, &*b) {
                     (
                         Apply {
                             function: a_function,
                             argument: a_argument,
-                            erased: a_erased,
+                            ..
                         },
                         Apply {
                             function: b_function,
-                            erased: b_erased,
                             argument: b_argument,
+                            ..
                         },
                     ) => {
                         equivalence_helper(
-                            a_function.clone(),
-                            b_function.clone(),
-                            index,
+                            alloc.copy_boxed(a_function),
+                            alloc.copy_boxed(b_function),
                             definitions,
-                        )? && a_erased == b_erased
-                            && equivalence_helper(
-                                a_argument.clone(),
-                                b_argument.clone(),
-                                index,
-                                definitions,
-                            )?
+                            alloc,
+                        )? && equivalence_helper(
+                            alloc.copy_boxed(a_argument),
+                            alloc.copy_boxed(b_argument),
+                            definitions,
+                            alloc,
+                        )?
                     }
                     (Reference(a), Reference(b)) => a == b,
 
@@ -57,41 +67,27 @@ impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>> Term<T, V> {
             };
 
             if !eq {
-                a.lazy_normalize(definitions)?;
-                b.lazy_normalize(definitions)?;
+                a.lazy_normalize_in(definitions, alloc)?;
+                b.lazy_normalize_in(definitions, alloc)?;
 
-                eq = match (*a, *b) {
+                eq = match (a.into_inner(), b.into_inner()) {
                     (Variable(a), Variable(b)) => a == b,
-                    (
-                        Lambda {
-                            body: mut a_body,
-                            erased: a_erased,
-                        },
-                        Lambda {
-                            body: mut b_body,
-                            erased: b_erased,
-                        },
-                    ) => {
-                        a_body.substitute_top(&Term::Variable(index));
-                        b_body.substitute_top(&Term::Variable(index));
-                        a_erased == b_erased
-                            && equivalence_helper(a_body, b_body, index.child(), definitions)?
+                    (Lambda { body: a_body, .. }, Lambda { body: b_body, .. }) => {
+                        equivalence_helper(a_body, b_body, definitions, alloc)?
                     }
-                    (Put(a), Put(b)) => equivalence_helper(a, b, index, definitions)?,
+                    (Put(a), Put(b)) => equivalence_helper(a, b, definitions, alloc)?,
                     (
                         Duplicate {
                             expression: a_expression,
-                            body: mut a_body,
+                            body: a_body,
                         },
                         Duplicate {
                             expression: b_expression,
-                            body: mut b_body,
+                            body: b_body,
                         },
                     ) => {
-                        a_body.substitute_top(&Term::Variable(index));
-                        b_body.substitute_top(&Term::Variable(index));
-                        equivalence_helper(a_body, b_body, index.child(), definitions)?
-                            && equivalence_helper(a_expression, b_expression, index, definitions)?
+                        equivalence_helper(a_body, b_body, definitions, alloc)?
+                            && equivalence_helper(a_expression, b_expression, definitions, alloc)?
                     }
                     (
                         Apply {
@@ -106,37 +102,29 @@ impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>> Term<T, V> {
                         },
                     ) => {
                         a_erased == b_erased
-                            && equivalence_helper(a_function, b_function, index, definitions)?
-                            && equivalence_helper(a_argument, b_argument, index, definitions)?
+                            && equivalence_helper(a_function, b_function, definitions, alloc)?
+                            && equivalence_helper(a_argument, b_argument, definitions, alloc)?
                     }
                     (Reference(a), Reference(b)) => a == b,
                     (
                         Function {
-                            return_type: mut a_return_type,
+                            return_type: a_return_type,
                             argument_type: a_argument_type,
                             ..
                         },
                         Function {
-                            return_type: mut b_return_type,
+                            return_type: b_return_type,
                             argument_type: b_argument_type,
                             ..
                         },
                     ) => {
-                        a_return_type.substitute(Index::top().child(), &Term::Variable(index));
-                        a_return_type.substitute_top(&Term::Variable(index.child()));
-                        b_return_type.substitute(Index::top().child(), &Term::Variable(index));
-                        b_return_type.substitute_top(&Term::Variable(index.child()));
-                        equivalence_helper(
-                            a_return_type,
-                            b_return_type,
-                            index.child().child(),
-                            definitions,
-                        )? && equivalence_helper(
-                            a_argument_type,
-                            b_argument_type,
-                            index,
-                            definitions,
-                        )?
+                        equivalence_helper(a_return_type, b_return_type, definitions, alloc)?
+                            && equivalence_helper(
+                                a_argument_type,
+                                b_argument_type,
+                                definitions,
+                                alloc,
+                            )?
                     }
                     (Universe, Universe) => true,
                     (
@@ -148,7 +136,7 @@ impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>> Term<T, V> {
                             expression: b_expression,
                             ..
                         },
-                    ) => equivalence_helper(a_expression, b_expression, index, definitions)?,
+                    ) => equivalence_helper(a_expression, b_expression, definitions, alloc)?,
                     (
                         Annotation {
                             expression: a_expression,
@@ -157,9 +145,9 @@ impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>> Term<T, V> {
                         b_expression,
                     ) => equivalence_helper(
                         a_expression,
-                        Box::new(b_expression),
-                        index,
+                        alloc.alloc(b_expression),
                         definitions,
+                        alloc,
                     )?,
                     (
                         a_expression,
@@ -168,23 +156,39 @@ impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>> Term<T, V> {
                             ..
                         },
                     ) => equivalence_helper(
-                        Box::new(a_expression),
+                        alloc.alloc(a_expression),
                         b_expression,
-                        index,
                         definitions,
+                        alloc,
                     )?,
-                    (Wrap(a), Wrap(b)) => equivalence_helper(a, b, index, definitions)?,
+                    (Wrap(a), Wrap(b)) => equivalence_helper(a, b, definitions, alloc)?,
 
-                    _ => false,
+                    (a, b) => {
+                        println!("{:?} != {:?}", a, b);
+                        false
+                    }
                 };
             }
 
             Ok(eq)
         }
 
-        let a = Box::new(self.clone());
-        let b = Box::new(other.clone());
+        let a = alloc.alloc(alloc.copy(self));
+        let b = alloc.alloc(alloc.copy(other));
 
-        equivalence_helper(a, b, Index::top(), definitions)
+        equivalence_helper(a, b, definitions, alloc)
+    }
+
+    pub fn equivalent<U: Definitions<T, V, A>>(
+        &self,
+        other: &Self,
+        definitions: &U,
+    ) -> Result<bool, NormalizationError>
+    where
+        A: Zero + Reallocate<T, V, A>,
+    {
+        let alloc = A::zero();
+
+        self.equivalent_in(other, definitions, &alloc)
     }
 }

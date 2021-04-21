@@ -1,6 +1,6 @@
 use std::fmt::{self, Debug, Display};
 
-use super::{Primitives, Term};
+use super::{Allocator, Primitives, Term};
 
 impl<T: Display> Show for T {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -16,7 +16,7 @@ pub fn debug_reference<T: Show>(data: &T, f: &mut fmt::Formatter<'_>) -> fmt::Re
     Show::fmt(data, f)
 }
 
-impl<T: Show, U: Primitives<T> + Show> Term<T, U> {
+impl<T: Show, U: Primitives<T> + Show, A: Allocator<T, U>> Term<T, U, A> {
     fn write(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Term::*;
 
@@ -60,7 +60,7 @@ impl<T: Show, U: Primitives<T> + Show> Term<T, U> {
     }
 }
 
-impl<T: Show, U: Primitives<T> + Show> Debug for Term<T, U> {
+impl<T: Show, U: Primitives<T> + Show, A: Allocator<T, U>> Debug for Term<T, U, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.write(f)
     }

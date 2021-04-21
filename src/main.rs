@@ -12,7 +12,7 @@ fn entry(buffer: String, term: String) -> Result<(), String> {
 
     let definitions: HashMap<_, _> = definitions.terms.into_iter().collect();
     for (_, def) in &definitions {
-        def.1.is_stratified(&definitions).map_err(e)?;
+        def.1.is_stratified().map_err(e)?;
         def.0.check(&Term::Universe, &definitions).map_err(e)?;
         def.1.check(&def.0, &definitions).map_err(e)?;
     }
