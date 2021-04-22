@@ -5,6 +5,7 @@ authors = ["Izzy Swart <zenerboson@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+bumpalo = { version = "3.6.1", features = ["boxed"] }
 combine = { version = "4.5.2", optional = true }
 derivative = "2.2.0"
 dot = { git = "https://github.com/syntacticsugarglider/dot-rust", branch = "main", optional = true }

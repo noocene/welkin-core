@@ -1,5 +1,5 @@
 use derivative::Derivative;
-use std::{collections::HashMap, hash::Hash};
+use std::{collections::HashMap, fmt::Debug, hash::Hash};
 
 use crate::term::{
     alloc::{Allocator, Reallocate, System, Zero},
@@ -107,7 +107,7 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
         use Term::*;
 
         let mut reduced = alloc.copy(ty);
-        reduced.lazy_normalize_in(definitions, alloc)?;
+        reduced.weak_normalize_in(definitions, alloc)?;
 
         Ok(match self {
             Lambda { body, erased } => {
@@ -244,7 +244,7 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
                 erased,
             } => {
                 let mut function_type = function.infer_in(definitions, alloc)?;
-                function_type.lazy_normalize_in(definitions, alloc)?;
+                function_type.weak_normalize_in(definitions, alloc)?;
                 if let Function {
                     argument_type,
                     return_type,
@@ -273,7 +273,7 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
                     self_annotation.shift_top();
                     return_type.substitute_in(Index::top().child(), &self_annotation, alloc);
                     return_type.substitute_top_in(&argument_annotation, alloc);
-                    return_type.lazy_normalize_in(definitions, alloc)?;
+                    return_type.weak_normalize_in(definitions, alloc)?;
                     return_type
                 } else {
                     Err(AnalysisError::NonFunctionApplication(alloc.copy(function)))?
@@ -306,7 +306,7 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
         definitions: &U,
     ) -> Result<(), AnalysisError<T, V, A>>
     where
-        T: Show + Clone + PartialEq,
+        T: Show + Clone + PartialEq + Debug,
         V: Show + Clone,
         A: Zero + Reallocate<T, V, A>,
     {
@@ -321,7 +321,7 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
     ) -> Result<Term<T, V, A>, AnalysisError<T, V, A>>
     where
         A: Zero + Reallocate<T, V, A>,
-        T: Clone + PartialEq + Show,
+        T: Clone + PartialEq + Show + Debug,
         V: Clone + Show,
     {
         let alloc = A::zero();

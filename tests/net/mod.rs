@@ -61,7 +61,7 @@ entry = \x x
 fn identity() {
     round_trip(
         r#"
-id = \x x
+id    = \x x
 entry = (id id)
 "#,
     );
@@ -71,9 +71,9 @@ entry = (id id)
 fn negation() {
     round_trip(
         r#"
-true = \t \f t
+true  = \t \f t
 false = \t \f f
-not = \a \t \f (a f t)
+not   = \a \t \f (a f t)
 entry = (not (not (not true)))
 "#,
     );
@@ -83,7 +83,7 @@ entry = (not (not (not true)))
 fn duplication() {
     round_trip(
         r#"
-id = \x x
+id    = \x x
 entry =
   : Id = . id
   . (Id (Id Id))
@@ -95,7 +95,7 @@ entry =
 fn epsilon() {
     round_trip(
         r#"
-id = \x \x x
+id    = \x \x x
 entry =
   : Id = . id
   . (Id (Id Id))

@@ -3,7 +3,7 @@ use derivative::Derivative;
 use crate::convert::{NetBuilderExt, NetError};
 
 use super::{
-    alloc::{Allocator, System},
+    alloc::{Allocator, Reallocate, System},
     debug_reference,
     normalize::NormalizationError,
     Definitions, Index, None, Primitives, Show, Term,
@@ -30,6 +30,7 @@ impl<'a, 'b, T, U: Definitions<T, V, A>, V: Primitives<T>, A: Allocator<T, V>>
     where
         T: Clone,
         V: Clone,
+        A: Reallocate<T, V, A>,
     {
         self.0.normalize_in(self.1, self.2)?;
         Ok(())

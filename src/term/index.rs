@@ -1,7 +1,10 @@
 use super::Index;
 
 impl Index {
-    pub(crate) fn within(&self, other: Index) -> bool {
+    pub(crate) fn is_below(&self, other: Index) -> bool {
+        self.0 < other.0
+    }
+    pub(crate) fn is_above(&self, other: Index) -> bool {
         self.0 > other.0
     }
     pub(crate) fn parent(&self) -> Index {

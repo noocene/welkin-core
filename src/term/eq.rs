@@ -1,9 +1,22 @@
+use derivative::Derivative;
+
 use crate::analysis::Empty;
 
 use super::{
     alloc::Reallocate, Allocator, Definitions, IntoInner, NormalizationError, Primitives, Show,
     Term, Zero,
 };
+
+use bumpalo::{boxed::Box as BumpBox, Bump};
+
+#[derive(Derivative)]
+#[derivative(Debug(bound = "T: Show, V: Show"))]
+enum EqualityTree<'a, T, V: Primitives<T>, A: Allocator<T, V>> {
+    Equal(Term<T, V, A>, Term<T, V, A>),
+    Or(BumpBox<'a, Option<(EqualityTree<'a, T, V, A>, EqualityTree<'a, T, V, A>)>>),
+    And(BumpBox<'a, Option<(EqualityTree<'a, T, V, A>, EqualityTree<'a, T, V, A>)>>),
+    Leaf(bool),
+}
 
 impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>, A: Allocator<T, V>>
     Term<T, V, A>
@@ -20,163 +33,218 @@ impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>, A: Allocator<
         use Term::*;
 
         fn equivalence_helper<
+            'b,
             U: Definitions<T, V, B>,
             T: Show + PartialEq + Clone,
             V: Show + Primitives<T> + Clone,
             A: Allocator<T, V> + Reallocate<T, V, B>,
             B: Allocator<T, V>,
         >(
-            mut a: A::Box,
-            mut b: A::Box,
+            tree: EqualityTree<'b, T, V, A>,
             definitions: &U,
             alloc: &A,
-        ) -> Result<bool, NormalizationError> {
-            let mut eq = {
-                a.lazy_normalize_in::<_, B>(&Empty, alloc)?;
-                b.lazy_normalize_in::<_, B>(&Empty, alloc)?;
-
-                match (&*a, &*b) {
-                    (
-                        Apply {
-                            function: a_function,
-                            argument: a_argument,
-                            ..
-                        },
-                        Apply {
-                            function: b_function,
-                            argument: b_argument,
-                            ..
-                        },
-                    ) => {
-                        equivalence_helper(
-                            alloc.copy_boxed(a_function),
-                            alloc.copy_boxed(b_function),
-                            definitions,
-                            alloc,
-                        )? && equivalence_helper(
-                            alloc.copy_boxed(a_argument),
-                            alloc.copy_boxed(b_argument),
-                            definitions,
-                            alloc,
-                        )?
+            o_alloc: &'b Bump,
+        ) -> Result<EqualityTree<'b, T, V, A>, NormalizationError> {
+            Ok(match tree {
+                this @ EqualityTree::Leaf(_) => this,
+                EqualityTree::And(mut data) => {
+                    let (a, b) = data.as_ref().as_ref().unwrap();
+                    match (a, b) {
+                        (EqualityTree::Leaf(false), _) | (_, EqualityTree::Leaf(false)) => {
+                            EqualityTree::Leaf(false)
+                        }
+                        (EqualityTree::Leaf(true), EqualityTree::Leaf(true)) => {
+                            EqualityTree::Leaf(true)
+                        }
+                        _ => EqualityTree::And(BumpBox::new_in(
+                            Some({
+                                let data = data.take().unwrap();
+                                (
+                                    equivalence_helper(data.0, definitions, alloc, o_alloc)?,
+                                    equivalence_helper(data.1, definitions, alloc, o_alloc)?,
+                                )
+                            }),
+                            o_alloc,
+                        )),
                     }
-                    (Reference(a), Reference(b)) => a == b,
-
-                    _ => false,
                 }
-            };
+                EqualityTree::Or(mut data) => {
+                    let (a, b) = data.as_ref().as_ref().unwrap();
+                    match (&a, &b) {
+                        (EqualityTree::Leaf(true), _) | (_, EqualityTree::Leaf(true)) => {
+                            EqualityTree::Leaf(true)
+                        }
+                        (EqualityTree::Leaf(false), EqualityTree::Leaf(false)) => {
+                            EqualityTree::Leaf(false)
+                        }
+                        _ => EqualityTree::Or(BumpBox::new_in(
+                            {
+                                let data = data.take().unwrap();
+                                Some((
+                                    equivalence_helper(data.0, definitions, alloc, o_alloc)?,
+                                    equivalence_helper(data.1, definitions, alloc, o_alloc)?,
+                                ))
+                            },
+                            o_alloc,
+                        )),
+                    }
+                }
+                EqualityTree::Equal(mut a, mut b) => {
+                    a.weak_normalize_in_erased::<_, B>(&Empty, alloc, true)?;
+                    b.weak_normalize_in_erased::<_, B>(&Empty, alloc, true)?;
 
-            if !eq {
-                a.lazy_normalize_in(definitions, alloc)?;
-                b.lazy_normalize_in(definitions, alloc)?;
+                    let mut ret_a = None;
 
-                eq = match (a.into_inner(), b.into_inner()) {
-                    (Variable(a), Variable(b)) => a == b,
-                    (Lambda { body: a_body, .. }, Lambda { body: b_body, .. }) => {
-                        equivalence_helper(a_body, b_body, definitions, alloc)?
-                    }
-                    (Put(a), Put(b)) => equivalence_helper(a, b, definitions, alloc)?,
-                    (
-                        Duplicate {
-                            expression: a_expression,
-                            body: a_body,
-                        },
-                        Duplicate {
-                            expression: b_expression,
-                            body: b_body,
-                        },
-                    ) => {
-                        equivalence_helper(a_body, b_body, definitions, alloc)?
-                            && equivalence_helper(a_expression, b_expression, definitions, alloc)?
-                    }
-                    (
-                        Apply {
-                            function: a_function,
-                            argument: a_argument,
-                            erased: a_erased,
-                        },
-                        Apply {
-                            function: b_function,
-                            erased: b_erased,
-                            argument: b_argument,
-                        },
-                    ) => {
-                        a_erased == b_erased
-                            && equivalence_helper(a_function, b_function, definitions, alloc)?
-                            && equivalence_helper(a_argument, b_argument, definitions, alloc)?
-                    }
-                    (Reference(a), Reference(b)) => a == b,
-                    (
-                        Function {
-                            return_type: a_return_type,
-                            argument_type: a_argument_type,
-                            ..
-                        },
-                        Function {
-                            return_type: b_return_type,
-                            argument_type: b_argument_type,
-                            ..
-                        },
-                    ) => {
-                        equivalence_helper(a_return_type, b_return_type, definitions, alloc)?
-                            && equivalence_helper(
-                                a_argument_type,
-                                b_argument_type,
-                                definitions,
-                                alloc,
-                            )?
-                    }
-                    (Universe, Universe) => true,
-                    (
-                        Annotation {
-                            expression: a_expression,
-                            ..
-                        },
-                        Annotation {
-                            expression: b_expression,
-                            ..
-                        },
-                    ) => equivalence_helper(a_expression, b_expression, definitions, alloc)?,
-                    (
-                        Annotation {
-                            expression: a_expression,
-                            ..
-                        },
-                        b_expression,
-                    ) => equivalence_helper(
-                        a_expression,
-                        alloc.alloc(b_expression),
-                        definitions,
-                        alloc,
-                    )?,
-                    (
-                        a_expression,
-                        Annotation {
-                            expression: b_expression,
-                            ..
-                        },
-                    ) => equivalence_helper(
-                        alloc.alloc(a_expression),
-                        b_expression,
-                        definitions,
-                        alloc,
-                    )?,
-                    (Wrap(a), Wrap(b)) => equivalence_helper(a, b, definitions, alloc)?,
+                    match (&a, &b) {
+                        (
+                            Apply {
+                                function: a_function,
+                                argument: a_argument,
+                                ..
+                            },
+                            Apply {
+                                function: b_function,
+                                argument: b_argument,
+                                ..
+                            },
+                        ) => {
+                            ret_a = Some(EqualityTree::And(BumpBox::new_in(
+                                Some((
+                                    EqualityTree::Equal(
+                                        alloc.copy(a_function),
+                                        alloc.copy(b_function),
+                                    ),
+                                    EqualityTree::Equal(
+                                        alloc.copy(a_argument),
+                                        alloc.copy(b_argument),
+                                    ),
+                                )),
+                                o_alloc,
+                            )));
+                        }
+                        (Reference(a), Reference(b)) => {
+                            if a == b {
+                                ret_a = Some(EqualityTree::Leaf(true))
+                            }
+                        }
 
-                    (a, b) => {
-                        println!("{:?} != {:?}", a, b);
-                        false
+                        _ => {}
                     }
-                };
-            }
 
-            Ok(eq)
+                    a.weak_normalize_in_erased::<_, B>(definitions, alloc, true)?;
+                    b.weak_normalize_in_erased::<_, B>(definitions, alloc, true)?;
+
+                    let ret_b = match (a, b) {
+                        (Universe, Universe) => EqualityTree::Leaf(true),
+                        (
+                            Function {
+                                argument_type: a_argument_type,
+                                return_type: a_return_type,
+                                ..
+                            },
+                            Function {
+                                argument_type: b_argument_type,
+                                return_type: b_return_type,
+                                ..
+                            },
+                        ) => EqualityTree::And(BumpBox::new_in(
+                            Some((
+                                EqualityTree::Equal(
+                                    a_argument_type.into_inner(),
+                                    b_argument_type.into_inner(),
+                                ),
+                                EqualityTree::Equal(
+                                    a_return_type.into_inner(),
+                                    b_return_type.into_inner(),
+                                ),
+                            )),
+                            o_alloc,
+                        )),
+                        (Lambda { body: a_body, .. }, Lambda { body: b_body, .. }) => {
+                            EqualityTree::Equal(a_body.into_inner(), b_body.into_inner())
+                        }
+                        (
+                            Apply {
+                                argument: a_argument,
+                                function: a_function,
+                                ..
+                            },
+                            Apply {
+                                argument: b_argument,
+                                function: b_function,
+                                ..
+                            },
+                        ) => EqualityTree::And(BumpBox::new_in(
+                            Some((
+                                EqualityTree::Equal(
+                                    a_argument.into_inner(),
+                                    b_argument.into_inner(),
+                                ),
+                                EqualityTree::Equal(
+                                    a_function.into_inner(),
+                                    b_function.into_inner(),
+                                ),
+                            )),
+                            o_alloc,
+                        )),
+                        (Variable(a), Variable(b)) => EqualityTree::Leaf(a == b),
+                        (Wrap(a), Wrap(b)) => EqualityTree::Equal(a.into_inner(), b.into_inner()),
+                        (Put(a), Put(b)) => EqualityTree::Equal(a.into_inner(), b.into_inner()),
+                        (
+                            Duplicate {
+                                expression: a_expression,
+                                body: a_body,
+                                ..
+                            },
+                            Duplicate {
+                                expression: b_expression,
+                                body: b_body,
+                                ..
+                            },
+                        ) => EqualityTree::And(BumpBox::new_in(
+                            Some((
+                                EqualityTree::Equal(
+                                    a_expression.into_inner(),
+                                    b_expression.into_inner(),
+                                ),
+                                EqualityTree::Equal(a_body.into_inner(), b_body.into_inner()),
+                            )),
+                            o_alloc,
+                        )),
+                        _ => EqualityTree::Leaf(false),
+                    };
+
+                    if let Some(ret_a) = ret_a {
+                        EqualityTree::Or(BumpBox::new_in(Some((ret_a, ret_b)), o_alloc))
+                    } else {
+                        ret_b
+                    }
+                }
+            })
         }
 
-        let a = alloc.alloc(alloc.copy(self));
-        let b = alloc.alloc(alloc.copy(other));
+        let o_alloc = Bump::new();
 
-        equivalence_helper(a, b, definitions, alloc)
+        let mut a = alloc.copy(self);
+        let mut b = alloc.copy(other);
+
+        a.weak_normalize_in_erased(definitions, alloc, true)?;
+        b.weak_normalize_in_erased(definitions, alloc, true)?;
+
+        let mut equality = EqualityTree::Equal(a, b);
+
+        while match equality {
+            EqualityTree::Leaf(_) => false,
+            _ => true,
+        } {
+            equality = equivalence_helper(equality, definitions, alloc, &o_alloc)?;
+        }
+
+        Ok(if let EqualityTree::Leaf(leaf) = equality {
+            leaf
+        } else {
+            panic!()
+        })
     }
 
     pub fn equivalent<U: Definitions<T, V, A>>(
