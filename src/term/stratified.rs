@@ -154,11 +154,12 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
         n_boxes_helper(self, Index::top(), nestings, 0)
     }
 
-    fn is_recursive_in_helper<'a, D: Definitions<T, V, A>>(
+    fn is_recursive_in_helper<'a, D: Definitions<T, V, B>, B: Allocator<T, V>>(
         &self,
         seen: &mut Vec<T>,
         definitions: &D,
         alloc: &A,
+        b_alloc: &B,
     ) -> bool
     where
         T: PartialEq + Clone,
@@ -167,19 +168,19 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
 
         match self {
             Variable(_) | Universe => false,
-            Lambda { body, .. } => body.is_recursive_in_helper(seen, definitions, alloc),
+            Lambda { body, .. } => body.is_recursive_in_helper(seen, definitions, alloc, b_alloc),
             Apply {
                 function,
                 argument,
                 erased,
             } => {
-                (!*erased && argument.is_recursive_in_helper(seen, definitions, alloc))
-                    || function.is_recursive_in_helper(seen, definitions, alloc)
+                (!*erased && argument.is_recursive_in_helper(seen, definitions, alloc, b_alloc))
+                    || function.is_recursive_in_helper(seen, definitions, alloc, b_alloc)
             }
-            Put(term) => term.is_recursive_in_helper(seen, definitions, alloc),
+            Put(term) => term.is_recursive_in_helper(seen, definitions, alloc, b_alloc),
             Duplicate { expression, body } => {
-                expression.is_recursive_in_helper(seen, definitions, alloc)
-                    || body.is_recursive_in_helper(seen, definitions, alloc)
+                expression.is_recursive_in_helper(seen, definitions, alloc, b_alloc)
+                    || body.is_recursive_in_helper(seen, definitions, alloc, b_alloc)
             }
             Term::Reference(reference) => {
                 if seen.contains(reference) {
@@ -187,9 +188,12 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
                 } else {
                     if let Some(term) = definitions.get(reference) {
                         seen.push(reference.clone());
-                        let res = term
-                            .as_ref()
-                            .is_recursive_in_helper(seen, definitions, alloc);
+                        let res = term.as_ref().is_recursive_in_helper(
+                            seen,
+                            definitions,
+                            b_alloc,
+                            b_alloc,
+                        );
                         seen.pop();
                         res
                     } else {
@@ -203,26 +207,26 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
                 return_type,
                 ..
             } => {
-                argument_type.is_recursive_in_helper(seen, definitions, alloc)
-                    && return_type.is_recursive_in_helper(seen, definitions, alloc)
+                argument_type.is_recursive_in_helper(seen, definitions, alloc, b_alloc)
+                    && return_type.is_recursive_in_helper(seen, definitions, alloc, b_alloc)
             }
             Term::Annotation { expression, .. } => {
-                expression.is_recursive_in_helper(seen, definitions, alloc)
+                expression.is_recursive_in_helper(seen, definitions, alloc, b_alloc)
             }
-            Term::Wrap(term) => term.is_recursive_in_helper(seen, definitions, alloc),
+            Term::Wrap(term) => term.is_recursive_in_helper(seen, definitions, alloc, b_alloc),
         }
     }
 
-    pub fn is_recursive_in<D: Definitions<T, V, A>>(
+    pub fn is_recursive_in<D: Definitions<T, V, B>, B: Allocator<T, V>>(
         &self,
-        name: &T,
         definitions: &D,
         alloc: &A,
+        b_alloc: &B,
     ) -> bool
     where
         T: PartialEq + Clone,
     {
-        self.is_recursive_in_helper(&mut vec![name.clone()], definitions, alloc)
+        self.is_recursive_in_helper(&mut vec![], definitions, alloc, b_alloc)
     }
 
     pub fn is_stratified(&self) -> Result<(), StratificationError<T>>
@@ -283,7 +287,6 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
 
     pub fn stratified_in<'a, 'b, U: Definitions<T, V, A>>(
         self,
-        name: &T,
         definitions: &'a U,
         allocator: &'b A,
     ) -> Result<Stratified<'a, 'b, T, U, V, A>, StratificationError<T>>
@@ -291,7 +294,7 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
         T: Clone + PartialEq,
     {
         self.is_stratified()?;
-        if !self.is_recursive_in(name, definitions, allocator) {
+        if self.is_recursive_in(definitions, allocator, allocator) {
             Err(StratificationError::RecursiveDefinition)?;
         }
         Ok(Stratified(self, definitions, allocator))
@@ -303,12 +306,11 @@ static SYSTEM: &'static System = &System;
 impl<T: Debug, V: Primitives<T>> Term<T, V, System> {
     pub fn stratified<'a, 'b, U: Definitions<T, V, System>>(
         self,
-        name: &T,
         definitions: &'a U,
     ) -> Result<Stratified<'a, 'b, T, U, V, System>, StratificationError<T>>
     where
         T: Clone + PartialEq,
     {
-        self.stratified_in(name, definitions, SYSTEM)
+        self.stratified_in(definitions, SYSTEM)
     }
 }

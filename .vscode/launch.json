@@ -7,25 +7,6 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in library 'welkin-core'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--lib",
-                    "--package=welkin-core"
-                ],
-                "filter": {
-                    "name": "welkin-core",
-                    "kind": "lib"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
             "name": "Debug executable 'welkin-core'",
             "cargo": {
                 "args": [

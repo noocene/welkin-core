@@ -30,7 +30,7 @@ fn round_trip(term: &str) {
     let definitions = definitions.terms.into_iter().collect::<HashMap<_, _>>();
     let entry = definitions.get("entry").cloned().unwrap();
     let definitions = TestDefinitions(definitions);
-    let entry = entry.stratified(&"entry".into(), &definitions).unwrap();
+    let entry = entry.stratified(&definitions).unwrap();
     let mut normalized = entry.clone();
     normalized.normalize().unwrap();
     let normalized = normalized.into_inner();

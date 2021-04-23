@@ -13,10 +13,10 @@ fn entry(buffer: String, term: String) -> Result<(), String> {
     let definitions: HashMap<_, _> = definitions.terms.into_iter().collect();
     for (name, def) in &definitions {
         def.1.is_stratified().map_err(e)?;
-        if def.0.is_recursive_in(name, &definitions, &System) {
+        if def.0.is_recursive_in(&definitions, &System, &System) {
             Err(format!("{} is defined recursively", name))?;
         }
-        if def.1.is_recursive_in(name, &definitions, &System) {
+        if def.1.is_recursive_in(&definitions, &System, &System) {
             Err(format!("{} is defined recursively", name))?;
         }
         def.0.check(&Term::Universe, &definitions).map_err(e)?;
@@ -24,7 +24,7 @@ fn entry(buffer: String, term: String) -> Result<(), String> {
     }
 
     let entry = Term::Reference(term.clone())
-        .stratified(&term, &definitions)
+        .stratified(&definitions)
         .map_err(e)?;
 
     #[cfg(any(feature = "graphviz", feature = "accelerated"))]
