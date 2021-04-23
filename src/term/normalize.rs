@@ -312,25 +312,11 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
                     }
                 }
             }
-            Variable(_) | Universe | Primitive(_) => {}
+            Variable(_) | Universe | Primitive(_) | Wrap(_) | Function { .. } => {}
 
-            Wrap(term) => {
-                term.normalize_in(definitions, alloc)?;
-            }
             Annotation { expression, .. } => {
                 expression.normalize_in(definitions, alloc)?;
                 *self = replace(expression, Term::Universe);
-            }
-            Function {
-                argument_type,
-                return_type,
-                erased,
-                ..
-            } => {
-                if !*erased {
-                    argument_type.normalize_in(definitions, alloc)?;
-                    return_type.normalize_in(definitions, alloc)?;
-                }
             }
         }
 
