@@ -2,6 +2,8 @@ use derivative::Derivative;
 
 use crate::convert::{NetBuilderExt, NetError};
 
+use std::fmt::Debug;
+
 use super::{
     alloc::{Allocator, Reallocate, System},
     debug_reference,
@@ -55,6 +57,7 @@ pub enum StratificationError<T> {
     MultiplicityMismatch,
     AffineUsedInBox,
     DupNonUnitBoxMultiplicity,
+    RecursiveDefinition,
     UndefinedReference(#[derivative(Debug(format_with = "debug_reference"))] T),
     ErasedUsed,
 }
@@ -151,6 +154,77 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
         n_boxes_helper(self, Index::top(), nestings, 0)
     }
 
+    fn is_recursive_in_helper<'a, D: Definitions<T, V, A>>(
+        &self,
+        seen: &mut Vec<T>,
+        definitions: &D,
+        alloc: &A,
+    ) -> bool
+    where
+        T: PartialEq + Clone,
+    {
+        use Term::*;
+
+        match self {
+            Variable(_) | Universe => false,
+            Lambda { body, .. } => body.is_recursive_in_helper(seen, definitions, alloc),
+            Apply {
+                function,
+                argument,
+                erased,
+            } => {
+                (!*erased && argument.is_recursive_in_helper(seen, definitions, alloc))
+                    || function.is_recursive_in_helper(seen, definitions, alloc)
+            }
+            Put(term) => term.is_recursive_in_helper(seen, definitions, alloc),
+            Duplicate { expression, body } => {
+                expression.is_recursive_in_helper(seen, definitions, alloc)
+                    || body.is_recursive_in_helper(seen, definitions, alloc)
+            }
+            Term::Reference(reference) => {
+                if seen.contains(reference) {
+                    true
+                } else {
+                    if let Some(term) = definitions.get(reference) {
+                        seen.push(reference.clone());
+                        let res = term
+                            .as_ref()
+                            .is_recursive_in_helper(seen, definitions, alloc);
+                        seen.pop();
+                        res
+                    } else {
+                        false
+                    }
+                }
+            }
+            Term::Primitive(_) => false,
+            Term::Function {
+                argument_type,
+                return_type,
+                ..
+            } => {
+                argument_type.is_recursive_in_helper(seen, definitions, alloc)
+                    && return_type.is_recursive_in_helper(seen, definitions, alloc)
+            }
+            Term::Annotation { expression, .. } => {
+                expression.is_recursive_in_helper(seen, definitions, alloc)
+            }
+            Term::Wrap(term) => term.is_recursive_in_helper(seen, definitions, alloc),
+        }
+    }
+
+    pub fn is_recursive_in<D: Definitions<T, V, A>>(
+        &self,
+        name: &T,
+        definitions: &D,
+        alloc: &A,
+    ) -> bool
+    where
+        T: PartialEq + Clone,
+    {
+        self.is_recursive_in_helper(&mut vec![name.clone()], definitions, alloc)
+    }
+
     pub fn is_stratified(&self) -> Result<(), StratificationError<T>>
     where
         T: Clone,
@@ -209,27 +283,32 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
 
     pub fn stratified_in<'a, 'b, U: Definitions<T, V, A>>(
         self,
+        name: &T,
         definitions: &'a U,
         allocator: &'b A,
     ) -> Result<Stratified<'a, 'b, T, U, V, A>, StratificationError<T>>
     where
-        T: Clone,
+        T: Clone + PartialEq,
     {
         self.is_stratified()?;
+        if !self.is_recursive_in(name, definitions, allocator) {
+            Err(StratificationError::RecursiveDefinition)?;
+        }
         Ok(Stratified(self, definitions, allocator))
     }
 }
 
 static SYSTEM: &'static System = &System;
 
-impl<T, V: Primitives<T>> Term<T, V, System> {
+impl<T: Debug, V: Primitives<T>> Term<T, V, System> {
     pub fn stratified<'a, 'b, U: Definitions<T, V, System>>(
         self,
+        name: &T,
         definitions: &'a U,
     ) -> Result<Stratified<'a, 'b, T, U, V, System>, StratificationError<T>>
     where
-        T: Clone,
+        T: Clone + PartialEq,
     {
-        self.stratified_in(definitions, SYSTEM)
+        self.stratified_in(name, definitions, SYSTEM)
     }
 }

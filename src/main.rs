@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt::Debug, fs::read_to_string, io, process::exit};
 #[cfg(any(feature = "graphviz", feature = "accelerated"))]
 use welkin_core::net::{Index, Net, VisitNetExt};
-use welkin_core::term::{typed::Definitions, ParseError, Term};
+use welkin_core::term::{alloc::System, typed::Definitions, ParseError, Term};
 
 fn e<E: Debug>(e: E) -> String {
     format!("{:?}", e)
@@ -11,13 +11,21 @@ fn entry(buffer: String, term: String) -> Result<(), String> {
     let definitions: Definitions = buffer.parse().map_err(|e: ParseError| e.to_string())?;
 
     let definitions: HashMap<_, _> = definitions.terms.into_iter().collect();
-    for (_, def) in &definitions {
+    for (name, def) in &definitions {
         def.1.is_stratified().map_err(e)?;
+        if def.0.is_recursive_in(name, &definitions, &System) {
+            Err(format!("{} is defined recursively", name))?;
+        }
+        if def.1.is_recursive_in(name, &definitions, &System) {
+            Err(format!("{} is defined recursively", name))?;
+        }
         def.0.check(&Term::Universe, &definitions).map_err(e)?;
         def.1.check(&def.0, &definitions).map_err(e)?;
     }
 
-    let entry = Term::Reference(term).stratified(&definitions).map_err(e)?;
+    let entry = Term::Reference(term.clone())
+        .stratified(&term, &definitions)
+        .map_err(e)?;
 
     #[cfg(any(feature = "graphviz", feature = "accelerated"))]
     let entry = entry.into_net::<Net<u32>>().unwrap();
