@@ -2,6 +2,9 @@ use std::{fmt::Debug, mem::replace};
 
 use super::{alloc::Reallocate, Allocator, Definitions, Index, IntoInner, Primitives, Term, Zero};
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Debug)]
 pub enum NormalizationError {
     InvalidDuplication,
