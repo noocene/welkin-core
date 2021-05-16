@@ -40,3 +40,13 @@ fn in_lambda() {
 
     assert_equivalent(term, parse(r#"(\x ^0 \x ^0)"#));
 }
+
+#[test]
+fn in_function() {
+    let mut term = parse(r#"+,:* ^2"#);
+    let other = parse(r#"\x ^0"#);
+
+    term.substitute(Index::top(), &other);
+
+    assert_equivalent(term, parse(r#"+,:* \x ^0"#));
+}
