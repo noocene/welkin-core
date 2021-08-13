@@ -25,7 +25,7 @@ pub use stratified::{StratificationError, Stratified};
 #[serde(transparent)]
 pub struct Index(pub usize);
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum None {}
 
 impl Show for None {

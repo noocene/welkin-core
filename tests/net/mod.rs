@@ -43,9 +43,7 @@ fn round_trip(term: &str) {
         let term = net.read_term(net.get(Index(0)).ports().principal);
         assert!(normalized.equivalent(&term, &definitions).unwrap());
     }
-    assert!(normalized
-        .equivalent(&net_normalized, &definitions)
-        .unwrap());
+    assert!(normalized.equals(&net_normalized));
 }
 
 #[test]
@@ -132,7 +130,7 @@ one = (succ zero)
 two = (succ one)
 three = (succ two)
 four = (succ three)
-entry = (fold one .one .\n (succ n))
+entry = (fold four .three .\n (succ n))
         "#,
     )
 }

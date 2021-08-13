@@ -21,6 +21,75 @@ enum EqualityTree<'a, T, V: Primitives<T>, A: Allocator<T, V>> {
 impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>, A: Allocator<T, V>>
     Term<T, V, A>
 {
+    pub fn equals(&self, other: &Self) -> bool
+    where
+        V: PartialEq,
+    {
+        match (self, other) {
+            (Term::Variable(a), Term::Variable(b)) => a == b,
+            (
+                Term::Lambda { body, erased },
+                Term::Lambda {
+                    body: b_body,
+                    erased: b_erased,
+                },
+            ) => body.equals(b_body) && erased == b_erased,
+            (
+                Term::Apply {
+                    function,
+                    argument,
+                    erased,
+                },
+                Term::Apply {
+                    function: b_function,
+                    argument: b_argument,
+                    erased: b_erased,
+                },
+            ) => function.equals(b_function) && argument.equals(b_argument) && erased == b_erased,
+            (Term::Put(a), Term::Put(b)) => a.equals(b),
+            (
+                Term::Duplicate { expression, body },
+                Term::Duplicate {
+                    expression: b_expression,
+                    body: b_body,
+                },
+            ) => expression.equals(b_expression) && body.equals(b_body),
+            (Term::Reference(a), Term::Reference(b)) => a == b,
+            (Term::Primitive(a), Term::Primitive(b)) => a == b,
+            (Term::Universe, Term::Universe) => true,
+            (
+                Term::Function {
+                    argument_type,
+                    return_type,
+                    erased,
+                },
+                Term::Function {
+                    argument_type: b_argument_type,
+                    return_type: b_return_type,
+                    erased: b_erased,
+                },
+            ) => {
+                argument_type.equals(b_argument_type)
+                    && return_type.equals(b_return_type)
+                    && erased == b_erased
+            }
+            (
+                Term::Annotation {
+                    checked,
+                    expression,
+                    ty,
+                },
+                Term::Annotation {
+                    checked: b_checked,
+                    expression: b_expression,
+                    ty: b_ty,
+                },
+            ) => expression.equals(b_expression) && ty.equals(b_ty) && checked == b_checked,
+            (Term::Wrap(a), Term::Wrap(b)) => a.equals(b),
+            _ => false,
+        }
+    }
+
     pub fn equivalent_in<U: Definitions<T, V, B>, B: Allocator<T, V>>(
         &self,
         other: &Self,

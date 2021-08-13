@@ -1,5 +1,6 @@
 #[cfg(feature = "graphviz")]
 use std::fmt::Display;
+use std::mem::replace;
 use std::{fmt::Debug, hash::Hash};
 
 mod storage;
@@ -104,11 +105,11 @@ impl<T: Storage + Clone + Copy + Eq + PartialOrd> NetBuilder for Net<T> {
         self.connect(self.get(Index(T::zero())).ports().principal, root);
         self.bind_unbound();
 
-        let mut active = std::mem::replace(&mut self.active, vec![]);
+        let mut active = replace(&mut self.active, vec![]);
 
         active.retain(|a| {
             let ap = Port::new((*a).clone(), Slot::Principal);
-            let bp = Port::new(ap.address(), Slot::Principal);
+            let bp = Port::new(self.follow(ap).address(), Slot::Principal);
             self.follow(ap) == bp && self.follow(bp) == ap
         });
 
