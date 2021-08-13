@@ -34,9 +34,13 @@ fn round_trip(term: &str) {
     let mut normalized = entry.clone();
     normalized.normalize().unwrap();
     let normalized = normalized.into_inner();
-    let mut net = entry.into_net::<Net<u32>>().unwrap();
+    let mut net = entry.clone().into_net::<Net<u32>>().unwrap();
+    let mut net_recovered = net.clone().read_term(net.get(Index(0)).ports().principal);
+    net_recovered.normalize(&definitions).unwrap();
+    assert!(normalized.equals(&net_recovered));
     net.reduce_all();
     let net_normalized = net.clone().read_term(net.get(Index(0)).ports().principal);
+
     #[cfg(feature = "accelerated")]
     {
         let net = accelerated::normalize_accelerated(net);
