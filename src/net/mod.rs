@@ -104,8 +104,15 @@ impl<T: Storage + Clone + Copy + Eq + PartialOrd> NetBuilder for Net<T> {
         self.connect(self.get(Index(T::zero())).ports().principal, root);
         self.bind_unbound();
 
-        // TODO this shouldn't be necessary
-        self.active.dedup();
+        let mut active = std::mem::replace(&mut self.active, vec![]);
+
+        active.retain(|a| {
+            let ap = Port::new((*a).clone(), Slot::Principal);
+            let bp = Port::new(ap.address(), Slot::Principal);
+            self.follow(ap) == bp && self.follow(bp) == ap
+        });
+
+        self.active = active;
 
         self
     }

@@ -102,3 +102,37 @@ entry =
 "#,
     );
 }
+
+#[test]
+fn unused_duplication() {
+    round_trip(
+        r#"
+entry =
+  : X = \x x
+  \x x
+"#,
+    );
+}
+
+#[test]
+fn fold() {
+    round_trip(
+        r#"
+fold = \x \x \x
+    : X = ^1
+    : X = ^1
+    : X = (^4 . \x (^1 ^0))
+    . (^0 ^2)
+succ = \x \x
+    : X = ^0
+    : X = (^2 . ^0)
+    . \x (^2 (^1 ^0))
+zero = \x . \x ^0
+one = (succ zero)
+two = (succ one)
+three = (succ two)
+four = (succ three)
+entry = (fold one .one .\n (succ n))
+        "#,
+    )
+}
