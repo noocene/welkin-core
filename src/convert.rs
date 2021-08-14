@@ -162,8 +162,9 @@ where
                     .rev()
                     .enumerate()
                     .find(|a| a.1 == &port)
-                    .unwrap()
-                    .0,
+                    .map(|a| a.0)
+                    // this fallthrough case may actually be incorrect
+                    .unwrap_or(var_ptrs.len().saturating_sub(1)),
             )),
             Right => {
                 let a_port = net.follow(<N::Port as PortExt>::new(port.address(), Slot::Left));
@@ -179,7 +180,7 @@ where
                 }
             }
         }
-    } else {
+    } else if ty == AgentType::Zeta {
         match port.slot() {
             Slot::Principal => {
                 let exit = dup_exit.pop().unwrap();
@@ -204,6 +205,16 @@ where
                 term
             }
         }
+    } else {
+        dup_exit.push(Slot::Left);
+        let term = build_term(
+            net,
+            net.follow(<N::Port as PortExt>::new(port.address(), Slot::Principal)),
+            var_ptrs,
+            dup_exit,
+        );
+        dup_exit.pop();
+        term
     }
 }
 

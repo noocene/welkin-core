@@ -17,8 +17,7 @@ impl<'a, T: Storage + Display + Clone + Copy>
         Some(dot::LabelText::LabelStr(Cow::Owned(format!(
             "{}",
             match n.1.ty() {
-                AgentType::Root => "diamond",
-                AgentType::Epsilon => "circle",
+                AgentType::Root => "circle",
                 _ => "square",
             }
         ))))
@@ -30,7 +29,7 @@ impl<'a, T: Storage + Display + Clone + Copy>
         let ap;
         let bp;
         let aty = self.get(a.address()).ty();
-        if aty != AgentType::Epsilon && aty != AgentType::Root {
+        if aty != AgentType::Root {
             ap = match a.slot() {
                 Left => dot::Port::W,
                 Right => dot::Port::E,
@@ -40,7 +39,7 @@ impl<'a, T: Storage + Display + Clone + Copy>
             ap = dot::Port::S;
         }
         let bty = self.get(b.address()).ty();
-        if bty != AgentType::Epsilon && bty != AgentType::Root {
+        if bty != AgentType::Root {
             bp = match b.slot() {
                 Left => dot::Port::W,
                 Right => dot::Port::E,
@@ -71,7 +70,6 @@ impl<'a, T: Storage + Display + Clone + Copy>
         dot::LabelText::LabelStr(Cow::Owned(format!(
             "{}{}",
             match n.1.ty() {
-                Epsilon => "&epsilon;",
                 Root => "*",
                 Delta => "&delta;",
                 Zeta => "&zeta;",
@@ -113,13 +111,6 @@ impl<'a, T: PartialOrd + Eq + Hash + Storage + Clone + Copy>
             .agents
             .clone()
             .into_iter()
-            .enumerate()
-            .filter_map(|(idx, a)| {
-                if self.freed.contains(&Index(T::from_usize(idx))) {
-                    return None;
-                }
-                Some(a)
-            })
             .map(|agent| {
                 let ports = agent.ports();
                 vec![ports.principal, ports.left, ports.right]
@@ -139,14 +130,16 @@ impl<'a, T: PartialOrd + Eq + Hash + Storage + Clone + Copy>
                 if self.freed.contains(&a.address()) || self.freed.contains(&b.address()) {
                     return false;
                 }
+
                 // don't render intended self-referential ports
                 if a.address() == b.address() && {
                     let ty = self.get(a.address()).ty();
-                    ty == AgentType::Epsilon || ty == AgentType::Root
+                    ty == AgentType::Root
                 } {
                     return false;
                 }
-                return true;
+
+                true
             })
             .collect::<Vec<_>>();
         Cow::Owned(edges)

@@ -103,7 +103,6 @@ impl<T: Storage + Clone + Copy + Eq + PartialOrd> NetBuilder for Net<T> {
 
     fn build(mut self, root: Self::Port) -> Self::Net {
         self.connect(self.get(Index(T::zero())).ports().principal, root);
-        self.bind_unbound();
 
         let mut active = replace(&mut self.active, vec![]);
 
@@ -142,10 +141,9 @@ impl<T: Storage + PartialEq> PortExt for Port<T> {
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentType {
-    Epsilon = 0,
-    Delta = 1,
-    Zeta = 2,
-    Root = 3,
+    Delta = 0,
+    Zeta = 1,
+    Root = 2,
 
     #[doc(hidden)]
     Wire = 0xFFFFFFFF,
@@ -369,7 +367,7 @@ impl<T: Storage + Clone + Copy> Net<T> {
 
     pub fn disconnect(&mut self, a: Port<T>)
     where
-        T: Eq,
+        T: PartialEq,
     {
         let b = self.follow(a.clone());
         if self.follow(b.clone()) == a {
@@ -415,56 +413,22 @@ impl<T: Storage + Clone + Copy> Net<T> {
         self.reduce(None)
     }
 
-    pub(crate) fn bind_unbound(&mut self)
-    where
-        T: Eq + PartialOrd,
-    {
-        for i in 0..self.agents.len() {
-            let ports = self.agents[i].ports();
-            if self.follow(ports.left.clone()) == ports.left {
-                let era = self.add(AgentType::Epsilon).ports();
-                self.connect(ports.left, era.principal);
-            }
-        }
-    }
-
     fn rewrite(&mut self, x: Index<T>, y: Index<T>)
     where
         T: PartialEq + PartialOrd,
     {
-        use AgentType::Epsilon;
-
         let x_ty = self.get(x).ty();
         let y_ty = self.get(y).ty();
 
         if x_ty == y_ty {
-            if x_ty != Epsilon {
-                let p0 = self.follow(Port::new(x, Slot::Left));
-                let p1 = self.follow(Port::new(y, Slot::Left));
-                self.connect(p0, p1);
-                let p0 = self.follow(Port::new(x, Slot::Right));
-                let p1 = self.follow(Port::new(y, Slot::Right));
-                self.connect(p0, p1);
-            }
-
-            self.free(x);
-            self.free(y);
+            let p0 = self.follow(Port::new(x, Slot::Left));
+            let p1 = self.follow(Port::new(y, Slot::Left));
+            self.connect(p0, p1);
+            let p0 = self.follow(Port::new(x, Slot::Right));
+            let p1 = self.follow(Port::new(y, Slot::Right));
+            self.connect(p0, p1);
         } else {
             use Slot::*;
-
-            if x_ty == Epsilon || y_ty == Epsilon {
-                let (x, y) = if x_ty == Epsilon { (x, y) } else { (y, x) };
-                let p = self.add(Epsilon).ports().principal.address();
-                let q = self.add(Epsilon).ports().principal.address();
-
-                self.connect(Port::new(p, Principal), self.follow(Port::new(y, Left)));
-                self.connect(Port::new(q, Principal), self.follow(Port::new(y, Right)));
-
-                self.free(x);
-                self.free(y);
-
-                return;
-            }
 
             let p = self.add(y_ty).ports().principal.address();
             let q = self.add(y_ty).ports().principal.address();
@@ -480,8 +444,17 @@ impl<T: Storage + Clone + Copy> Net<T> {
             self.connect(Port::new(q, Principal), self.follow(Port::new(x, Right)));
             self.connect(Port::new(r, Principal), self.follow(Port::new(y, Left)));
             self.connect(Port::new(s, Principal), self.follow(Port::new(y, Right)));
+        }
 
-            self.free(x);
+        self.disconnect(Port::new(x, Slot::Principal));
+        self.disconnect(Port::new(x, Slot::Left));
+        self.disconnect(Port::new(x, Slot::Right));
+        self.disconnect(Port::new(y, Slot::Principal));
+        self.disconnect(Port::new(y, Slot::Left));
+        self.disconnect(Port::new(y, Slot::Right));
+
+        self.free(x);
+        if x != y {
             self.free(y);
         }
     }
