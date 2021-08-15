@@ -3,6 +3,8 @@ use std::fmt::Display;
 use std::mem::replace;
 use std::{fmt::Debug, hash::Hash};
 
+// pub mod from_ea_core;
+
 mod storage;
 pub use crate::convert::NetBuilderExt;
 pub use crate::convert::VisitNetExt;
@@ -63,7 +65,7 @@ impl<T: Storage + PartialEq + Clone> AgentExt for Agent<T> {
     }
 
     fn ty(&self) -> AgentType {
-        self.ty
+        AgentType(T::into_usize(self.ty.clone()))
     }
 }
 
@@ -102,7 +104,7 @@ impl<T: Storage + Clone + Copy + Eq + PartialOrd> NetBuilder for Net<T> {
     }
 
     fn build(mut self, root: Self::Port) -> Self::Net {
-        self.connect(self.get(Index(T::zero())).ports().principal, root);
+        self.connect(self.get(Index(T::zero())).ports().left, root);
 
         let mut active = replace(&mut self.active, vec![]);
 
@@ -138,15 +140,33 @@ impl<T: Storage + PartialEq> PortExt for Port<T> {
     }
 }
 
-#[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AgentType {
-    Delta = 0,
-    Zeta = 1,
-    Root = 2,
+pub struct AgentType(usize);
 
-    #[doc(hidden)]
-    Wire = 0xFFFFFFFF,
+impl AgentType {
+    pub fn root() -> Self {
+        AgentType(0)
+    }
+
+    pub fn delta() -> Self {
+        AgentType(1)
+    }
+
+    pub fn zeta(idx: usize) -> Self {
+        AgentType(idx + 2)
+    }
+
+    pub fn wire() -> Self {
+        AgentType(std::usize::MAX)
+    }
+
+    pub fn is_delta(&self) -> bool {
+        self.0 == 1
+    }
+
+    pub fn is_root(&self) -> bool {
+        self.0 == 0
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -155,7 +175,7 @@ pub struct Agent<T: Storage> {
     principal: Port<T>,
     left: Port<T>,
     right: Port<T>,
-    ty: AgentType,
+    ty: T,
 }
 
 #[repr(u8)]
@@ -188,7 +208,7 @@ impl<T: Storage + Clone> Agent<T> {
             left,
             right,
             principal,
-            ty,
+            ty: T::from_usize(ty.0),
         }
     }
 
@@ -229,7 +249,7 @@ impl<T: Storage + Clone> Agent<T> {
     }
 
     pub fn ty(&self) -> AgentType {
-        self.ty
+        AgentType(T::into_usize(self.ty.clone()))
     }
 }
 
@@ -292,9 +312,9 @@ impl<T: Storage + Clone + Copy> Net<T> {
             freed: vec![],
             active: vec![],
         };
-        let root = net.add(AgentType::Root).ports();
-        net.connect(root.left, root.right);
-        let p = root.principal;
+        let root = net.add(AgentType::root()).ports();
+        net.connect(root.principal, root.right);
+        let p = root.left;
         (net, p)
     }
 
@@ -347,10 +367,7 @@ impl<T: Storage + Clone + Copy> Net<T> {
     {
         use Slot::Principal;
 
-        if a.slot() == Principal
-            && b.slot() == Principal
-            && !(a.address().is_root() || b.address().is_root())
-        {
+        if a.slot() == Principal && b.slot() == Principal {
             if a.address().0 < b.address().0 {
                 self.mark_active(a.address())
             } else {
@@ -374,12 +391,23 @@ impl<T: Storage + Clone + Copy> Net<T> {
             let aa = a.address();
             let ba = b.address();
 
-            self.get_mut(aa).update_slot(a.slot(), a);
-            self.get_mut(ba).update_slot(b.slot(), b);
+            self.get_mut(aa)
+                .update_slot(a.slot(), Port::new(aa, a.slot()));
+            self.get_mut(ba)
+                .update_slot(b.slot(), Port::new(ba, b.slot()));
         }
     }
 
     fn free(&mut self, address: Index<T>) {
+        let (principal, left, right) = (
+            Port::new(address, Slot::Principal),
+            Port::new(address, Slot::Left),
+            Port::new(address, Slot::Right),
+        );
+
+        let agent = Agent::new(principal, left, right, self.get(address).ty());
+
+        *self.get_mut(address) = agent;
         self.freed.push(address);
     }
 

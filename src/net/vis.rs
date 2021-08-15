@@ -1,6 +1,6 @@
 use std::{borrow::Cow, collections::HashSet, fmt::Display, hash::Hash};
 
-use super::{Agent, AgentType, Index, Net, Port, Slot, Storage};
+use super::{Agent, Index, Net, Port, Slot, Storage};
 
 impl<'a, T: Storage + Display + Clone + Copy>
     dot::Labeller<'a, (Index<T>, Agent<T>), (Port<T>, Port<T>)> for Net<T>
@@ -16,9 +16,10 @@ impl<'a, T: Storage + Display + Clone + Copy>
     fn node_shape(&self, n: &(Index<T>, Agent<T>)) -> Option<dot::LabelText<'a>> {
         Some(dot::LabelText::LabelStr(Cow::Owned(format!(
             "{}",
-            match n.1.ty() {
-                AgentType::Root => "circle",
-                _ => "square",
+            if n.1.ty().is_root() {
+                "circle"
+            } else {
+                "square"
             }
         ))))
     }
@@ -29,7 +30,7 @@ impl<'a, T: Storage + Display + Clone + Copy>
         let ap;
         let bp;
         let aty = self.get(a.address()).ty();
-        if aty != AgentType::Root {
+        if !aty.is_root() {
             ap = match a.slot() {
                 Left => dot::Port::W,
                 Right => dot::Port::E,
@@ -39,7 +40,7 @@ impl<'a, T: Storage + Display + Clone + Copy>
             ap = dot::Port::S;
         }
         let bty = self.get(b.address()).ty();
-        if bty != AgentType::Root {
+        if !bty.is_root() {
             bp = match b.slot() {
                 Left => dot::Port::W,
                 Right => dot::Port::E,
@@ -65,16 +66,14 @@ impl<'a, T: Storage + Display + Clone + Copy>
     }
 
     fn node_label<'b>(&'b self, n: &(Index<T>, Agent<T>)) -> dot::LabelText<'b> {
-        use AgentType::*;
-
         dot::LabelText::LabelStr(Cow::Owned(format!(
             "{}{}",
-            match n.1.ty() {
-                Root => "*",
-                Delta => "&delta;",
-                Zeta => "&zeta;",
-
-                Wire => "WIRE",
+            if n.1.ty().is_root() {
+                "*"
+            } else if n.1.ty().is_delta() {
+                "&delta;"
+            } else {
+                "&zeta;"
             },
             n.0 .0
         )))
@@ -134,7 +133,7 @@ impl<'a, T: PartialOrd + Eq + Hash + Storage + Clone + Copy>
                 // don't render intended self-referential ports
                 if a.address() == b.address() && {
                     let ty = self.get(a.address()).ty();
-                    ty == AgentType::Root
+                    ty.is_root()
                 } {
                     return false;
                 }

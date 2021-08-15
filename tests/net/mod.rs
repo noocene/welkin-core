@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use welkin_core::{
-    net::{Index, Net, Port, PortExt, Slot, VisitNetExt},
+    net::{Index, Net, VisitNetExt},
     term::{untyped::Definitions, DefinitionResult, Definitions as Defs, Term},
 };
 
@@ -35,21 +35,19 @@ fn round_trip(term: &str) {
     normalized.normalize().unwrap();
     let normalized = normalized.into_inner();
     let mut net = entry.clone().into_net::<Net<u32>>().unwrap();
-    let mut net_recovered = net.clone().read_term(Port::new(Index(0), Slot::Left));
+    let mut net_recovered = net.clone().read_term(Index(0));
     net_recovered.normalize(&definitions).unwrap();
     assert!(normalized.equals(&net_recovered));
     net.reduce_all();
 
-    let net_normalized = net.clone().read_term(Port::new(Index(0), Slot::Left));
+    let net_normalized = net.clone().read_term(Index(0));
 
     #[cfg(feature = "accelerated")]
     {
         let net = accelerated::normalize_accelerated(net);
-        let term = net.read_term(Port::new(Index(0), Slot::Left));
+        let term = net.read_term(Index(0));
         normalized.equals(&term);
     }
-
-    println!("\n{:?}\n{:?}", normalized, net_normalized);
 
     assert!(normalized.equals(&net_normalized));
 }
@@ -124,15 +122,15 @@ entry =
 fn fold() {
     round_trip(
         r#"
-fold = \x \x \x
-    : X = ^1
-    : X = ^1
-    : X = (^4 . \x (^1 ^0))
-    . (^0 ^2)
-succ = \x \x
-    : X = ^0
-    : X = (^2 . ^0)
-    . \x (^2 (^1 ^0))
+fold = \n \initial \call
+    : Initial = initial
+    : Call = call
+    : F = (n . \h (Call h))
+    . (F Initial)
+succ = \n \f
+    : F = f
+    : G = (n . F)
+    . \base (F (G base))
 zero = \x . \x ^0
 one = (succ zero)
 two = (succ one)

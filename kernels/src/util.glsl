@@ -89,9 +89,8 @@ void replace(Index index, Agent agent) {
     agents[index.data] = agent;
 }
 
-const Ty DELTA = Ty(0);
-const Ty ZETA = Ty(1);
-const Ty ROOT = Ty(2);
+const Ty ROOT = Ty(0);
+const Ty DELTA = Ty(1);
 const Ty WIRE = Ty(0xFFFFFFFF);
 
 Index alloc() {

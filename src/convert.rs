@@ -5,6 +5,8 @@ use crate::{
     term::{alloc::Allocator, Definitions, Index, None, Primitives, Show, Stratified, Term},
 };
 
+use std::mem::replace;
+
 #[derive(Derivative)]
 #[derivative(Debug(bound = "T: Show, V: Show"))]
 pub enum NetError<T, V: Primitives<T>, A: Allocator<T, V>> {
@@ -17,6 +19,7 @@ impl<T, A: Allocator<T, None>> Term<T, None, A> {
         net: &mut N,
         definitions: &U,
         var_ptrs: &mut Vec<N::Port>,
+        idx: &mut usize,
         alloc: &A,
     ) -> Result<N::Port, NetError<T, None, A>>
     where
@@ -32,28 +35,30 @@ impl<T, A: Allocator<T, None>> Term<T, None, A> {
                 if target.is_root() || target == ptr {
                     ptr
                 } else {
-                    let (principal, left, right) = net.add(AgentType::Zeta);
+                    let ty = replace(idx, *idx + 1);
+                    let (principal, left, right) = net.add(AgentType::zeta(ty));
                     net.connect(principal, ptr);
                     net.connect(left, target);
                     right
                 }
             }
-            Put(term) => term.build_net_in(net, definitions, var_ptrs, alloc)?,
+            Put(term) => term.build_net_in(net, definitions, var_ptrs, idx, alloc)?,
             Reference(name) => definitions.get(name).unwrap().as_ref().build_net_in(
                 net,
                 definitions,
                 var_ptrs,
+                idx,
                 alloc,
             )?,
             Lambda { body, erased } => {
                 if *erased {
                     let mut body = alloc.copy(body);
                     body.substitute_top_in(&Term::Variable(Index::top()), alloc);
-                    body.build_net_in(net, definitions, var_ptrs, alloc)?
+                    body.build_net_in(net, definitions, var_ptrs, idx, alloc)?
                 } else {
-                    let (principal, left, right) = net.add(AgentType::Delta);
+                    let (principal, left, right) = net.add(AgentType::delta());
                     var_ptrs.push(left.clone());
-                    let body = body.build_net_in(net, definitions, var_ptrs, alloc)?;
+                    let body = body.build_net_in(net, definitions, var_ptrs, idx, alloc)?;
                     var_ptrs.pop();
                     net.connect(right, body);
                     principal
@@ -62,9 +67,9 @@ impl<T, A: Allocator<T, None>> Term<T, None, A> {
             Duplicate {
                 body, expression, ..
             } => {
-                let expression = expression.build_net_in(net, definitions, var_ptrs, alloc)?;
+                let expression = expression.build_net_in(net, definitions, var_ptrs, idx, alloc)?;
                 var_ptrs.push(expression);
-                let body = body.build_net_in(net, definitions, var_ptrs, alloc)?;
+                let body = body.build_net_in(net, definitions, var_ptrs, idx, alloc)?;
                 var_ptrs.pop();
                 body
             }
@@ -75,18 +80,18 @@ impl<T, A: Allocator<T, None>> Term<T, None, A> {
                 ..
             } => {
                 if *erased {
-                    function.build_net_in(net, definitions, var_ptrs, alloc)?
+                    function.build_net_in(net, definitions, var_ptrs, idx, alloc)?
                 } else {
-                    let (principal, left, right) = net.add(AgentType::Delta);
-                    let function = function.build_net_in(net, definitions, var_ptrs, alloc)?;
+                    let (principal, left, right) = net.add(AgentType::delta());
+                    let function = function.build_net_in(net, definitions, var_ptrs, idx, alloc)?;
                     net.connect(principal, function);
-                    let argument = argument.build_net_in(net, definitions, var_ptrs, alloc)?;
+                    let argument = argument.build_net_in(net, definitions, var_ptrs, idx, alloc)?;
                     net.connect(left, argument);
                     right
                 }
             }
             Annotation { expression, .. } => {
-                expression.build_net_in(net, definitions, var_ptrs, alloc)?
+                expression.build_net_in(net, definitions, var_ptrs, idx, alloc)?
             }
             _ => Err(NetError::TypedTerm(alloc.copy(self)))?,
         })
@@ -122,7 +127,7 @@ where
         let mut var_ptrs = vec![];
         let entry = terms
             .0
-            .build_net_in(&mut net, terms.1, &mut var_ptrs, &terms.2)?;
+            .build_net_in(&mut net, terms.1, &mut var_ptrs, &mut 0, &terms.2)?;
         Ok(net.build(entry))
     }
 }
@@ -141,7 +146,7 @@ where
     let agent = net.get(port.address());
     let ty = agent.ty();
 
-    if ty == AgentType::Delta {
+    if ty.is_delta() {
         match port.slot() {
             Principal => {
                 var_ptrs.push(<N::Port as PortExt>::new(port.address(), Slot::Left));
@@ -163,8 +168,7 @@ where
                     .enumerate()
                     .find(|a| a.1 == &port)
                     .map(|a| a.0)
-                    // this fallthrough case may actually be incorrect
-                    .unwrap_or(var_ptrs.len().saturating_sub(1)),
+                    .unwrap(),
             )),
             Right => {
                 let a_port = net.follow(<N::Port as PortExt>::new(port.address(), Slot::Left));
@@ -180,7 +184,7 @@ where
                 }
             }
         }
-    } else if ty == AgentType::Zeta {
+    } else {
         match port.slot() {
             Slot::Principal => {
                 let exit = dup_exit.pop().unwrap();
@@ -205,16 +209,6 @@ where
                 term
             }
         }
-    } else {
-        dup_exit.push(Slot::Left);
-        let term = build_term(
-            net,
-            net.follow(<N::Port as PortExt>::new(port.address(), Slot::Principal)),
-            var_ptrs,
-            dup_exit,
-        );
-        dup_exit.pop();
-        term
     }
 }
 
@@ -222,14 +216,15 @@ pub trait VisitNetExt: VisitNet
 where
     Self::Port: PartialEq,
 {
-    fn read_term<T>(&self, port: Self::Port) -> Term<T>;
+    fn read_term<T>(&self, root: <Self::Port as PortExt>::Address) -> Term<T>;
 }
 
 impl<T: VisitNet> VisitNetExt for T
 where
     Self::Port: PartialEq,
 {
-    fn read_term<U>(&self, port: <Self as VisitNet>::Port) -> Term<U> {
+    fn read_term<U>(&self, root: <T::Port as PortExt>::Address) -> Term<U> {
+        let port = self.follow(<T::Port as PortExt>::new(root, Slot::Left));
         build_term(self, port, &mut vec![], &mut vec![])
     }
 }

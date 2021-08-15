@@ -231,7 +231,7 @@ impl Net<u32> {
                     Port::new(Index(0), Slot::Principal),
                     Port::new(Index(0), Slot::Principal),
                     Port::new(Index(0), Slot::Principal),
-                    AgentType::Wire
+                    AgentType::wire()
                 );
                 ext_len
             ]

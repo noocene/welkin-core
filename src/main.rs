@@ -52,7 +52,7 @@ fn entry(buffer: String, term: String) -> Result<(), String> {
                 .render_to(&mut std::fs::File::create("example1.dot").unwrap())
                 .unwrap();
         }
-        entry.read_term(entry.get(Index(0)).ports().principal)
+        entry.read_term(Index(0))
     };
 
     #[cfg(not(any(feature = "graphviz", feature = "accelerated")))]
