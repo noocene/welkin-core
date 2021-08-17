@@ -169,27 +169,31 @@ impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>, A: Allocator<
                             Apply {
                                 function: a_function,
                                 argument: a_argument,
-                                ..
+                                erased: a_erased,
                             },
                             Apply {
                                 function: b_function,
                                 argument: b_argument,
-                                ..
+                                erased: b_erased,
                             },
                         ) => {
-                            ret_a = Some(EqualityTree::And(BumpBox::new_in(
-                                Some((
-                                    EqualityTree::Equal(
-                                        alloc.copy(a_function),
-                                        alloc.copy(b_function),
-                                    ),
-                                    EqualityTree::Equal(
-                                        alloc.copy(a_argument),
-                                        alloc.copy(b_argument),
-                                    ),
-                                )),
-                                o_alloc,
-                            )));
+                            ret_a = if a_erased != b_erased {
+                                Some(EqualityTree::Leaf(false))
+                            } else {
+                                Some(EqualityTree::And(BumpBox::new_in(
+                                    Some((
+                                        EqualityTree::Equal(
+                                            alloc.copy(a_function),
+                                            alloc.copy(b_function),
+                                        ),
+                                        EqualityTree::Equal(
+                                            alloc.copy(a_argument),
+                                            alloc.copy(b_argument),
+                                        ),
+                                    )),
+                                    o_alloc,
+                                )))
+                            }
                         }
                         (Reference(a), Reference(b)) => {
                             if a == b {
@@ -209,53 +213,78 @@ impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>, A: Allocator<
                             Function {
                                 argument_type: a_argument_type,
                                 return_type: a_return_type,
-                                ..
+                                erased: a_erased,
                             },
                             Function {
                                 argument_type: b_argument_type,
                                 return_type: b_return_type,
-                                ..
+                                erased: b_erased,
                             },
-                        ) => EqualityTree::And(BumpBox::new_in(
-                            Some((
-                                EqualityTree::Equal(
-                                    a_argument_type.into_inner(),
-                                    b_argument_type.into_inner(),
-                                ),
-                                EqualityTree::Equal(
-                                    a_return_type.into_inner(),
-                                    b_return_type.into_inner(),
-                                ),
-                            )),
-                            o_alloc,
-                        )),
-                        (Lambda { body: a_body, .. }, Lambda { body: b_body, .. }) => {
-                            EqualityTree::Equal(a_body.into_inner(), b_body.into_inner())
+                        ) => {
+                            if a_erased != b_erased {
+                                EqualityTree::Leaf(false)
+                            } else {
+                                EqualityTree::And(BumpBox::new_in(
+                                    Some((
+                                        EqualityTree::Equal(
+                                            a_argument_type.into_inner(),
+                                            b_argument_type.into_inner(),
+                                        ),
+                                        EqualityTree::Equal(
+                                            a_return_type.into_inner(),
+                                            b_return_type.into_inner(),
+                                        ),
+                                    )),
+                                    o_alloc,
+                                ))
+                            }
+                        }
+                        (
+                            Lambda {
+                                body: a_body,
+                                erased: a_erased,
+                            },
+                            Lambda {
+                                body: b_body,
+                                erased: b_erased,
+                            },
+                        ) => {
+                            if a_erased != b_erased {
+                                EqualityTree::Leaf(false)
+                            } else {
+                                EqualityTree::Equal(a_body.into_inner(), b_body.into_inner())
+                            }
                         }
                         (
                             Apply {
                                 argument: a_argument,
                                 function: a_function,
-                                ..
+                                erased: a_erased,
                             },
                             Apply {
                                 argument: b_argument,
                                 function: b_function,
-                                ..
+                                erased: b_erased,
                             },
-                        ) => EqualityTree::And(BumpBox::new_in(
-                            Some((
-                                EqualityTree::Equal(
-                                    a_argument.into_inner(),
-                                    b_argument.into_inner(),
-                                ),
-                                EqualityTree::Equal(
-                                    a_function.into_inner(),
-                                    b_function.into_inner(),
-                                ),
-                            )),
-                            o_alloc,
-                        )),
+                        ) => {
+                            if a_erased != b_erased {
+                                EqualityTree::Leaf(false)
+                            } else {
+                                EqualityTree::And(BumpBox::new_in(
+                                    Some((
+                                        EqualityTree::Equal(
+                                            a_argument.into_inner(),
+                                            b_argument.into_inner(),
+                                        ),
+                                        EqualityTree::Equal(
+                                            a_function.into_inner(),
+                                            b_function.into_inner(),
+                                        ),
+                                    )),
+                                    o_alloc,
+                                ))
+                            }
+                        }
                         (Variable(a), Variable(b)) => EqualityTree::Leaf(a == b),
                         (Wrap(a), Wrap(b)) => EqualityTree::Equal(a.into_inner(), b.into_inner()),
                         (Put(a), Put(b)) => EqualityTree::Equal(a.into_inner(), b.into_inner()),
@@ -263,12 +292,10 @@ impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>, A: Allocator<
                             Duplicate {
                                 expression: a_expression,
                                 body: a_body,
-                                ..
                             },
                             Duplicate {
                                 expression: b_expression,
                                 body: b_body,
-                                ..
                             },
                         ) => EqualityTree::And(BumpBox::new_in(
                             Some((
