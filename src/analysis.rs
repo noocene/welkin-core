@@ -123,21 +123,31 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
                             ty: alloc.copy(ty),
                         })?;
                     }
-                    let mut self_annotation = Term::Annotation {
+                    let self_annotation = Term::Annotation {
                         checked: true,
                         expression: alloc.alloc(alloc.copy(self)),
                         ty: alloc.alloc(alloc.copy(ty)),
                     };
-                    let argument_annotation = Term::Annotation {
+                    let mut argument_annotation = Term::Annotation {
                         checked: true,
                         ty: argument_type,
                         expression: alloc.alloc(Term::Variable(Index::top())),
                     };
-                    self_annotation.shift_top();
-                    return_type.substitute_in(Index::top().child(), &self_annotation, alloc);
-                    return_type.substitute_top_in(&argument_annotation, alloc);
+
+                    return_type.substitute_function_in_unshifted(
+                        self_annotation,
+                        &argument_annotation,
+                        alloc,
+                    );
+
+                    if let Term::Annotation { ty, .. } = &mut argument_annotation {
+                        ty.shift_top();
+                    } else {
+                        panic!()
+                    };
+
                     let mut body = alloc.copy(body);
-                    body.substitute_top_in(&argument_annotation, alloc);
+                    body.substitute_top_in_unshifted(&argument_annotation, alloc);
                     body.check_in(&*return_type, definitions, alloc)?;
                 } else {
                     Err(AnalysisError::NonFunctionLambda {
@@ -220,7 +230,7 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
                 return_type,
                 ..
             } => {
-                let mut self_annotation = Term::Annotation {
+                let self_annotation = Term::Annotation {
                     checked: true,
                     expression: alloc.alloc(Term::Variable(Index::top().child())),
                     ty: alloc.alloc(alloc.copy(self)),
@@ -232,9 +242,7 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
                 };
                 argument_type.check_in(&Universe, definitions, alloc)?;
                 let mut return_type = alloc.copy(return_type);
-                self_annotation.shift_top();
-                return_type.substitute_in(Index::top().child(), &self_annotation, alloc);
-                return_type.substitute_top_in(&argument_annotation, alloc);
+                return_type.substitute_function_in(self_annotation, &argument_annotation, alloc);
                 return_type.check_in(&Universe, definitions, alloc)?;
                 Universe
             }
@@ -258,7 +266,7 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
                             ty: alloc.copy(&function_type),
                         })?;
                     }
-                    let mut self_annotation = Term::Annotation {
+                    let self_annotation = Term::Annotation {
                         expression: alloc.copy_boxed(function),
                         ty: alloc.alloc(alloc.copy(&function_type)),
                         checked: true,
@@ -270,9 +278,11 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
                     };
                     argument.check_in(argument_type, definitions, alloc)?;
                     let mut return_type = alloc.copy(return_type);
-                    self_annotation.shift_top();
-                    return_type.substitute_in(Index::top().child(), &self_annotation, alloc);
-                    return_type.substitute_top_in(&argument_annotation, alloc);
+                    return_type.substitute_function_in(
+                        self_annotation,
+                        &argument_annotation,
+                        alloc,
+                    );
                     return_type.weak_normalize_in(definitions, alloc)?;
                     return_type
                 } else {

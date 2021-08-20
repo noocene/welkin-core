@@ -1,4 +1,4 @@
-use crate::term::Index;
+use crate::term::{Index, Term};
 
 use super::{assert_equivalent, parse};
 
@@ -43,10 +43,9 @@ fn in_lambda() {
 
 #[test]
 fn in_function() {
-    let mut term = parse(r#"+,:* ^2"#);
-    let other = parse(r#"\x ^0"#);
+    let mut term: Term<String> = parse(r#"+,:* (^3 ^2)"#);
 
-    term.substitute(Index::top(), &other);
+    term.substitute_function(parse("^2"), &parse("^2"));
 
-    assert_equivalent(term, parse(r#"+,:* \x ^0"#));
+    panic!("{:?}", term);
 }
