@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt::Debug, fs::read_to_string, io, process::exit};
 #[cfg(any(feature = "graphviz", feature = "accelerated"))]
 use welkin_core::net::{Index, Net, VisitNetExt};
-use welkin_core::term::{alloc::System, typed::Definitions, ParseError, Term};
+use welkin_core::term::{alloc::System, typed::Definitions, NullCache, ParseError, Term};
 
 fn e<E: Debug>(e: E) -> String {
     format!("{:?}", e)
@@ -19,8 +19,12 @@ fn entry(buffer: String, term: String) -> Result<(), String> {
         if def.1.is_recursive_in(&definitions, &System, &System) {
             Err(format!("{} is defined recursively", name))?;
         }
-        def.0.check(&Term::Universe, &definitions).map_err(e)?;
-        def.1.check(&def.0, &definitions).map_err(e)?;
+        def.0
+            .check(&Term::Universe, &definitions, &mut NullCache)
+            .map_err(e)?;
+        def.1
+            .check(&def.0, &definitions, &mut NullCache)
+            .map_err(e)?;
     }
 
     let entry = Term::Reference(term.clone())

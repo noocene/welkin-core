@@ -3,6 +3,8 @@ use std::fmt::Debug;
 pub mod alloc;
 use alloc::{Allocator, IntoInner, System, Zero};
 mod eq;
+pub use eq::{EqualityCache, MapCache, NullCache};
+mod hash;
 mod index;
 mod map_primitive;
 mod map_reference;
@@ -25,7 +27,7 @@ pub use stratified::{StratificationError, Stratified};
 #[serde(transparent)]
 pub struct Index(pub usize);
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub enum None {}
 
 impl Show for None {

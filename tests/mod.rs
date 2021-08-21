@@ -1,6 +1,6 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::Hash};
 
-use welkin_core::term::{typed::Definitions, Primitives, Show, Term, TypedDefinitions};
+use welkin_core::term::{typed::Definitions, NullCache, Primitives, Show, Term, TypedDefinitions};
 
 mod net;
 mod primitives;
@@ -12,8 +12,10 @@ fn check_all(terms: &str) {
     let definitions: HashMap<_, _> = definitions.terms.into_iter().collect();
     for (_, def) in &definitions {
         def.1.is_stratified().unwrap();
-        def.0.check(&Term::Universe, &definitions).unwrap();
-        def.1.check(&def.0, &definitions).unwrap();
+        def.0
+            .check(&Term::Universe, &definitions, &mut NullCache)
+            .unwrap();
+        def.1.check(&def.0, &definitions, &mut NullCache).unwrap();
     }
 }
 
@@ -23,7 +25,7 @@ fn parse<V: Primitives<String>>(term: &str) -> Term<String, V> {
     term.map_primitive(|_| panic!())
 }
 
-fn check<V: Primitives<String> + Clone>(ty: Term<String, V>, term: Term<String, V>)
+fn check<V: Primitives<String> + Clone + Hash>(ty: Term<String, V>, term: Term<String, V>)
 where
     V: Show,
 {
@@ -31,11 +33,12 @@ where
 
     // TODO stratification check
 
-    ty.check(&Term::Universe, &definitions).unwrap();
-    term.check(&ty, &definitions).unwrap();
+    ty.check(&Term::Universe, &definitions, &mut NullCache)
+        .unwrap();
+    term.check(&ty, &definitions, &mut NullCache).unwrap();
 }
 
-fn check_with<V: Primitives<String> + Clone, D: TypedDefinitions<String, V>>(
+fn check_with<V: Primitives<String> + Clone + Hash, D: TypedDefinitions<String, V>>(
     ty: Term<String, V>,
     term: Term<String, V>,
     definitions: &D,
@@ -44,11 +47,12 @@ fn check_with<V: Primitives<String> + Clone, D: TypedDefinitions<String, V>>(
 {
     // TODO stratification check
 
-    ty.check(&Term::Universe, definitions).unwrap();
-    term.check(&ty, definitions).unwrap();
+    ty.check(&Term::Universe, definitions, &mut NullCache)
+        .unwrap();
+    term.check(&ty, definitions, &mut NullCache).unwrap();
 }
 
-fn normalizes_to<V: Primitives<String> + Clone, D: TypedDefinitions<String, V>>(
+fn normalizes_to<V: Primitives<String> + Clone + Hash, D: TypedDefinitions<String, V>>(
     mut term: Term<String, V>,
     target: Term<String, V>,
     definitions: &D,
@@ -56,5 +60,7 @@ fn normalizes_to<V: Primitives<String> + Clone, D: TypedDefinitions<String, V>>(
     V: Show,
 {
     term.normalize(definitions).unwrap();
-    assert!(term.equivalent(&target, definitions).unwrap());
+    assert!(term
+        .equivalent(&target, definitions, &mut NullCache)
+        .unwrap());
 }

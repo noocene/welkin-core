@@ -1,6 +1,6 @@
 use crate::{
     analysis::Empty,
-    term::{Primitives, Term},
+    term::{NullCache, Primitives, Term},
 };
 
 mod normalize;
@@ -15,7 +15,7 @@ fn parse<V: Primitives<String>>(term: &str) -> Term<String, V> {
 
 #[track_caller]
 fn assert_equivalent(a: Term<String>, b: Term<String>) {
-    if !a.equivalent(&b, &Empty).unwrap() {
+    if !a.equivalent(&b, &Empty, &mut NullCache).unwrap() {
         panic!("assertion failed: {:?} != {:?}", a, b);
     }
 }

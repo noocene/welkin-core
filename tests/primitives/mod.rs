@@ -5,7 +5,7 @@ use crate::{check, check_with, normalizes_to, parse};
 
 #[test]
 fn ty_id() {
-    #[derive(Clone, Debug, PartialEq, Eq)]
+    #[derive(Clone, Debug, PartialEq, Hash, Eq)]
     struct TyId;
 
     impl Display for TyId {
@@ -60,7 +60,7 @@ fn unit_id() {
         ),
     );
 
-    #[derive(Clone, Debug, PartialEq, Eq)]
+    #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     struct UnitId;
 
     impl Display for UnitId {

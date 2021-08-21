@@ -1,3 +1,8 @@
+use std::{
+    collections::{hash_map::DefaultHasher, HashMap},
+    hash::{Hash, Hasher},
+};
+
 use derivative::Derivative;
 
 use crate::analysis::Empty;
@@ -16,6 +21,54 @@ enum EqualityTree<'a, T, V: Primitives<T>, A: Allocator<T, V>> {
     Or(BumpBox<'a, Option<(EqualityTree<'a, T, V, A>, EqualityTree<'a, T, V, A>)>>),
     And(BumpBox<'a, Option<(EqualityTree<'a, T, V, A>, EqualityTree<'a, T, V, A>)>>),
     Leaf(bool),
+}
+
+pub trait EqualityCache {
+    fn register(&mut self, a: u64, b: u64, checks: bool);
+    fn check(&self, a: u64, b: u64) -> Option<bool>;
+}
+
+#[derive(Copy, Clone)]
+pub struct NullCache;
+
+pub struct MapCache {
+    data: HashMap<(u64, u64), bool>,
+}
+
+impl MapCache {
+    pub fn new() -> Self {
+        Self {
+            data: HashMap::new(),
+        }
+    }
+}
+
+impl EqualityCache for MapCache {
+    fn register(&mut self, a: u64, b: u64, checks: bool) {
+        self.data.insert((a, b), checks);
+    }
+
+    fn check(&self, a: u64, b: u64) -> Option<bool> {
+        self.data.get(&(a, b)).cloned()
+    }
+}
+
+impl EqualityCache for NullCache {
+    fn register(&mut self, _: u64, _: u64, _: bool) {}
+
+    fn check(&self, _: u64, _: u64) -> Option<bool> {
+        None
+    }
+}
+
+impl<'a, T: EqualityCache> EqualityCache for &'a mut T {
+    fn register(&mut self, a: u64, b: u64, checks: bool) {
+        T::register(self, a, b, checks)
+    }
+
+    fn check(&self, a: u64, b: u64) -> Option<bool> {
+        T::check(self, a, b)
+    }
 }
 
 impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>, A: Allocator<T, V>>
@@ -95,17 +148,20 @@ impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>, A: Allocator<
         other: &Self,
         definitions: &U,
         alloc: &A,
+        cache: &mut impl EqualityCache,
     ) -> Result<bool, NormalizationError>
     where
         A: Reallocate<T, V, B>,
+        T: Hash,
+        V: Hash,
     {
         use Term::*;
 
         fn equivalence_helper<
             'b,
             U: Definitions<T, V, B>,
-            T: Show + PartialEq + Clone,
-            V: Show + Primitives<T> + Clone,
+            T: Show + PartialEq + Clone + Hash,
+            V: Show + Primitives<T> + Clone + Hash,
             A: Allocator<T, V> + Reallocate<T, V, B>,
             B: Allocator<T, V>,
         >(
@@ -113,6 +169,7 @@ impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>, A: Allocator<
             definitions: &U,
             alloc: &A,
             o_alloc: &'b Bump,
+            cache: &mut impl EqualityCache,
         ) -> Result<EqualityTree<'b, T, V, A>, NormalizationError> {
             Ok(match tree {
                 this @ EqualityTree::Leaf(_) => this,
@@ -129,8 +186,14 @@ impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>, A: Allocator<
                             Some({
                                 let data = data.take().unwrap();
                                 (
-                                    equivalence_helper(data.0, definitions, alloc, o_alloc)?,
-                                    equivalence_helper(data.1, definitions, alloc, o_alloc)?,
+                                    equivalence_helper(
+                                        data.0,
+                                        definitions,
+                                        alloc,
+                                        o_alloc,
+                                        &mut *cache,
+                                    )?,
+                                    equivalence_helper(data.1, definitions, alloc, o_alloc, cache)?,
                                 )
                             }),
                             o_alloc,
@@ -150,8 +213,14 @@ impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>, A: Allocator<
                             {
                                 let data = data.take().unwrap();
                                 Some((
-                                    equivalence_helper(data.0, definitions, alloc, o_alloc)?,
-                                    equivalence_helper(data.1, definitions, alloc, o_alloc)?,
+                                    equivalence_helper(
+                                        data.0,
+                                        definitions,
+                                        alloc,
+                                        o_alloc,
+                                        &mut *cache,
+                                    )?,
+                                    equivalence_helper(data.1, definitions, alloc, o_alloc, cache)?,
                                 ))
                             },
                             o_alloc,
@@ -161,6 +230,26 @@ impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>, A: Allocator<
                 EqualityTree::Equal(mut a, mut b) => {
                     a.weak_normalize_in_erased::<_, B>(&Empty, alloc, true)?;
                     b.weak_normalize_in_erased::<_, B>(&Empty, alloc, true)?;
+
+                    let mut hasher = DefaultHasher::new();
+
+                    a.hash(&mut hasher);
+
+                    let a_hash = hasher.finish();
+
+                    let mut hasher = DefaultHasher::new();
+
+                    b.hash(&mut hasher);
+
+                    let b_hash = hasher.finish();
+
+                    if a_hash == b_hash {
+                        return Ok(EqualityTree::Leaf(true));
+                    }
+
+                    if let Some(leaf) = cache.check(a_hash, b_hash) {
+                        return Ok(EqualityTree::Leaf(leaf));
+                    }
 
                     let mut ret_a = None;
 
@@ -327,16 +416,37 @@ impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>, A: Allocator<
         a.weak_normalize_in_erased(definitions, alloc, true)?;
         b.weak_normalize_in_erased(definitions, alloc, true)?;
 
+        let mut hasher = DefaultHasher::new();
+
+        a.hash(&mut hasher);
+
+        let a_hash = hasher.finish();
+
+        let mut hasher = DefaultHasher::new();
+
+        b.hash(&mut hasher);
+
+        let b_hash = hasher.finish();
+
+        if a_hash == b_hash {
+            return Ok(true);
+        }
+
+        if let Some(leaf) = cache.check(a_hash, b_hash) {
+            return Ok(leaf);
+        }
+
         let mut equality = EqualityTree::Equal(a, b);
 
         while match equality {
             EqualityTree::Leaf(_) => false,
             _ => true,
         } {
-            equality = equivalence_helper(equality, definitions, alloc, &o_alloc)?;
+            equality = equivalence_helper(equality, definitions, alloc, &o_alloc, cache)?;
         }
 
         Ok(if let EqualityTree::Leaf(leaf) = equality {
+            cache.register(a_hash, b_hash, leaf);
             leaf
         } else {
             panic!()
@@ -347,12 +457,15 @@ impl<T: PartialEq + Show + Clone, V: Show + Clone + Primitives<T>, A: Allocator<
         &self,
         other: &Self,
         definitions: &U,
+        cache: &mut impl EqualityCache,
     ) -> Result<bool, NormalizationError>
     where
         A: Zero + Reallocate<T, V, A>,
+        T: Hash,
+        V: Hash,
     {
         let alloc = A::zero();
 
-        self.equivalent_in(other, definitions, &alloc)
+        self.equivalent_in(other, definitions, &alloc, cache)
     }
 }

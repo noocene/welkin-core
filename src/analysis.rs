@@ -3,7 +3,7 @@ use std::{collections::HashMap, fmt::Debug, hash::Hash};
 
 use crate::term::{
     alloc::{Allocator, Reallocate, System, Zero},
-    debug_reference, Index, None, NormalizationError, Primitives, Show, Term,
+    debug_reference, EqualityCache, Index, None, NormalizationError, Primitives, Show, Term,
 };
 
 #[derive(Derivative)]
@@ -98,10 +98,11 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
         ty: &Term<T, V, A>,
         definitions: &U,
         alloc: &A,
+        cache: &mut impl EqualityCache,
     ) -> Result<(), AnalysisError<T, V, A>>
     where
-        T: Show + Clone + PartialEq,
-        V: Show + Clone,
+        T: Show + Clone + PartialEq + Hash,
+        V: Show + Clone + Hash,
         A: Reallocate<T, V, B>,
     {
         use Term::*;
@@ -148,7 +149,7 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
 
                     let mut body = alloc.copy(body);
                     body.substitute_top_in_unshifted(&argument_annotation, alloc);
-                    body.check_in(&*return_type, definitions, alloc)?;
+                    body.check_in(&*return_type, definitions, alloc, cache)?;
                 } else {
                     Err(AnalysisError::NonFunctionLambda {
                         term: alloc.copy(self),
@@ -157,7 +158,7 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
                 }
             }
             Duplicate { expression, body } => {
-                let expression_ty = expression.infer_in(definitions, alloc)?;
+                let expression_ty = expression.infer_in(definitions, alloc, &mut *cache)?;
                 let expression_ty = if let Wrap(term) = expression_ty {
                     term
                 } else {
@@ -170,11 +171,11 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
                 };
                 let mut body = alloc.copy(body);
                 body.substitute_top_in(&argument_annotation, alloc);
-                body.check_in(&reduced, definitions, alloc)?;
+                body.check_in(&reduced, definitions, alloc, cache)?;
             }
             Put(term) => {
                 if let Wrap(ty) = reduced {
-                    term.check_in(&ty, definitions, alloc)?;
+                    term.check_in(&ty, definitions, alloc, cache)?;
                 } else {
                     Err(AnalysisError::ExpectedWrap {
                         term: alloc.copy(self),
@@ -183,8 +184,8 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
                 }
             }
             _ => {
-                let inferred = self.infer_in(definitions, alloc)?;
-                if !inferred.equivalent_in(&reduced, definitions, alloc)? {
+                let inferred = self.infer_in(definitions, alloc, &mut *cache)?;
+                if !inferred.equivalent_in(&reduced, definitions, alloc, cache)? {
                     Err(AnalysisError::TypeError {
                         expected: reduced,
                         got: inferred,
@@ -198,10 +199,11 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
         &self,
         definitions: &U,
         alloc: &A,
+        cache: &mut impl EqualityCache,
     ) -> Result<Term<T, V, A>, AnalysisError<T, V, A>>
     where
-        T: Show + Clone + PartialEq,
-        V: Show + Clone,
+        T: Show + Clone + PartialEq + Hash,
+        V: Show + Clone + Hash,
         A: Reallocate<T, V, B>,
     {
         use Term::*;
@@ -214,7 +216,7 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
                 checked,
             } => {
                 if !checked {
-                    expression.check_in(ty, definitions, alloc)?;
+                    expression.check_in(ty, definitions, alloc, cache)?;
                 }
                 alloc.copy(ty)
             }
@@ -240,10 +242,10 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
                     expression: alloc.alloc(Term::Variable(Index::top())),
                     ty: alloc.alloc(alloc.copy(argument_type)),
                 };
-                argument_type.check_in(&Universe, definitions, alloc)?;
+                argument_type.check_in(&Universe, definitions, alloc, &mut *cache)?;
                 let mut return_type = alloc.copy(return_type);
                 return_type.substitute_function_in(self_annotation, &argument_annotation, alloc);
-                return_type.check_in(&Universe, definitions, alloc)?;
+                return_type.check_in(&Universe, definitions, alloc, cache)?;
                 Universe
             }
             Apply {
@@ -251,7 +253,7 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
                 argument,
                 erased,
             } => {
-                let mut function_type = function.infer_in(definitions, alloc)?;
+                let mut function_type = function.infer_in(definitions, alloc, &mut *cache)?;
                 function_type.weak_normalize_in(definitions, alloc)?;
                 if let Function {
                     argument_type,
@@ -276,7 +278,7 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
                         ty: alloc.copy_boxed(argument_type),
                         checked: true,
                     };
-                    argument.check_in(argument_type, definitions, alloc)?;
+                    argument.check_in(argument_type, definitions, alloc, cache)?;
                     let mut return_type = alloc.copy(return_type);
                     return_type.substitute_function_in(
                         self_annotation,
@@ -292,7 +294,7 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
             Variable { .. } => alloc.copy(self),
 
             Wrap(expression) => {
-                let expression_ty = expression.infer_in(definitions, alloc)?;
+                let expression_ty = expression.infer_in(definitions, alloc, cache)?;
                 if let Term::Universe = expression_ty {
                 } else {
                     Err(AnalysisError::InvalidWrap {
@@ -302,7 +304,7 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
                 }
                 Universe
             }
-            Put(expression) => Wrap(alloc.alloc(expression.infer_in(definitions, alloc)?)),
+            Put(expression) => Wrap(alloc.alloc(expression.infer_in(definitions, alloc, cache)?)),
 
             Primitive(prim) => prim.ty(alloc),
 
@@ -314,28 +316,30 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
         &self,
         ty: &Term<T, V, A>,
         definitions: &U,
+        cache: &mut impl EqualityCache,
     ) -> Result<(), AnalysisError<T, V, A>>
     where
-        T: Show + Clone + PartialEq + Debug,
-        V: Show + Clone,
+        T: Show + Clone + PartialEq + Debug + Hash,
+        V: Show + Clone + Hash,
         A: Zero + Reallocate<T, V, A>,
     {
         let alloc = A::zero();
 
-        self.check_in(ty, definitions, &alloc)
+        self.check_in(ty, definitions, &alloc, cache)
     }
 
     pub fn infer<U: TypedDefinitions<T, V, A>>(
         &self,
         definitions: &U,
+        cache: &mut impl EqualityCache,
     ) -> Result<Term<T, V, A>, AnalysisError<T, V, A>>
     where
         A: Zero + Reallocate<T, V, A>,
-        T: Clone + PartialEq + Show + Debug,
-        V: Clone + Show,
+        T: Clone + PartialEq + Show + Debug + Hash,
+        V: Clone + Show + Hash,
     {
         let alloc = A::zero();
 
-        self.infer_in(definitions, &alloc)
+        self.infer_in(definitions, &alloc, cache)
     }
 }
