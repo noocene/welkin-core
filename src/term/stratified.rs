@@ -247,10 +247,14 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
                 body.is_stratified()?;
             }
             Apply {
-                function, argument, ..
+                function,
+                argument,
+                erased,
             } => {
                 function.is_stratified()?;
-                argument.is_stratified()?;
+                if !*erased {
+                    argument.is_stratified()?;
+                }
             }
             Put(term) => {
                 term.is_stratified()?;
@@ -262,23 +266,12 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
                 expression.is_stratified()?;
                 body.is_stratified()?;
             }
-            Variable(_) | Reference(_) | Universe => {}
+            Variable(_) | Reference(_) | Function { .. } | Universe => {}
             Primitive(_) => todo!(),
 
             Wrap(term) => term.is_stratified()?,
-            Annotation { expression, ty, .. } => {
+            Annotation { expression, .. } => {
                 expression.is_stratified()?;
-                ty.is_stratified()?;
-            }
-            Function {
-                argument_type,
-                return_type,
-                erased,
-            } => {
-                if !erased {
-                    argument_type.is_stratified()?;
-                    return_type.is_stratified()?;
-                }
             }
         }
 

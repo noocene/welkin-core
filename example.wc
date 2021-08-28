@@ -73,11 +73,18 @@ Vect : +,A:* +,size:Nat * =
     +,nil:((prop zero) (vnil A))
     ((prop size) vect)
 
-Equal : +,A:* +,b:A * =
-    \A \b _equal,prop:
-        +,b:A
-        +,:((Equal A) b)
-        *
-    ((prop b) equal)
+Equal: _,A:* _,a:A _,b:A * =
+    /A /a /b
+    _self,prop: _,b:A +,:[Equal A a b] *
+    +,:([prop a] [refl A a])
+    ([prop b] self)
+
+refl: _,A:* _,a:A [Equal A a a] =
+    /A /a /prop \refl refl
+
+doublenegation: +,b:Bool [Equal Bool (not (not b)) b] =
+    \b (([b \self [Equal Bool (not (not self)) self]]
+        [refl Bool true])
+        [refl Bool false])
 
 main : (Vect Bool zero) = (vnil Bool)
