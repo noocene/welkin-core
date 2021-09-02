@@ -187,7 +187,7 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
                 let inferred = self.infer_in(definitions, alloc, &mut *cache)?;
                 if !inferred.equivalent_in(&reduced, definitions, alloc, cache)? {
                     Err(AnalysisError::TypeError {
-                        expected: reduced,
+                        expected: alloc.copy(ty),
                         got: inferred,
                     })?;
                 }
