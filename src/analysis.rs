@@ -24,7 +24,10 @@ pub enum AnalysisError<T, U: Primitives<T> = None, A: Allocator<T, U> = System> 
     },
     UnboundReference(#[derivative(Debug(format_with = "debug_reference"))] T),
     NonFunctionApplication(Term<T, U, A>),
-    UnboxedDuplication(Term<T, U, A>),
+    UnboxedDuplication {
+        term: Term<T, U, A>,
+        ty: Term<T, U, A>,
+    },
     Impossible(Term<T, U, A>),
     ExpectedWrap {
         term: Term<T, U, A>,
@@ -162,7 +165,10 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
                 let expression_ty = if let Wrap(term) = expression_ty {
                     term
                 } else {
-                    Err(AnalysisError::UnboxedDuplication(alloc.copy(self)))?
+                    Err(AnalysisError::UnboxedDuplication {
+                        term: alloc.copy(self),
+                        ty: alloc.copy(&expression_ty),
+                    })?
                 };
                 let argument_annotation = Term::Annotation {
                     checked: true,
