@@ -315,7 +315,8 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
             Primitive(prim) => prim.ty(alloc),
 
             _ => Err(AnalysisError::Impossible(alloc.copy(self)))?,
-        })
+        }
+        .extract_from_annotation())
     }
 
     pub fn check<U: TypedDefinitions<T, V, A>>(

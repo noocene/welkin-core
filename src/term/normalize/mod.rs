@@ -285,6 +285,14 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
         Ok(())
     }
 
+    pub(crate) fn extract_from_annotation(self) -> Self {
+        if let Term::Annotation { expression, .. } = self {
+            expression.into_inner().extract_from_annotation()
+        } else {
+            self
+        }
+    }
+
     pub fn weak_normalize_in<U: Definitions<T, V, B>, B: Allocator<T, V>>(
         &mut self,
         definitions: &U,
