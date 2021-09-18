@@ -161,7 +161,8 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
                 }
             }
             Duplicate { expression, body } => {
-                let expression_ty = expression.infer_in(definitions, alloc, &mut *cache)?;
+                let mut expression_ty = expression.infer_in(definitions, alloc, &mut *cache)?;
+                expression_ty.weak_normalize_in(definitions, alloc)?;
                 let expression_ty = if let Wrap(term) = expression_ty {
                     term
                 } else {
