@@ -11,6 +11,7 @@ mod map_reference;
 mod normalize;
 #[cfg(feature = "parser")]
 mod parse;
+mod serde_impls;
 mod show;
 mod stratified;
 
@@ -59,21 +60,51 @@ impl<T> Primitives<T> for None {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "T: Serialize, U: Serialize",
+    deserialize = "T: Deserialize<'de>, U: Deserialize<'de>, A: Zero"
+))]
 pub enum Term<T, U: Primitives<T> = None, A: Allocator<T, U> = System> {
     // Untyped language
     Variable(Index),
     Lambda {
+        #[serde(
+            serialize_with = "serde_impls::serialize::<T, U, A, _>",
+            deserialize_with = "serde_impls::deserialize::<T, U, A, _>"
+        )]
         body: A::Box,
         erased: bool,
     },
     Apply {
+        #[serde(
+            serialize_with = "serde_impls::serialize::<T, U, A, _>",
+            deserialize_with = "serde_impls::deserialize::<T, U, A, _>"
+        )]
         function: A::Box,
+        #[serde(
+            serialize_with = "serde_impls::serialize::<T, U, A, _>",
+            deserialize_with = "serde_impls::deserialize::<T, U, A, _>"
+        )]
         argument: A::Box,
         erased: bool,
     },
-    Put(A::Box),
+    Put(
+        #[serde(
+            serialize_with = "serde_impls::serialize::<T, U, A, _>",
+            deserialize_with = "serde_impls::deserialize::<T, U, A, _>"
+        )]
+        A::Box,
+    ),
     Duplicate {
+        #[serde(
+            serialize_with = "serde_impls::serialize::<T, U, A, _>",
+            deserialize_with = "serde_impls::deserialize::<T, U, A, _>"
+        )]
         expression: A::Box,
+        #[serde(
+            serialize_with = "serde_impls::serialize::<T, U, A, _>",
+            deserialize_with = "serde_impls::deserialize::<T, U, A, _>"
+        )]
         body: A::Box,
     },
     Reference(T),
@@ -82,14 +113,36 @@ pub enum Term<T, U: Primitives<T> = None, A: Allocator<T, U> = System> {
     // Typed extensions
     Universe,
     Function {
+        #[serde(
+            serialize_with = "serde_impls::serialize::<T, U, A, _>",
+            deserialize_with = "serde_impls::deserialize::<T, U, A, _>"
+        )]
         argument_type: A::Box,
+        #[serde(
+            serialize_with = "serde_impls::serialize::<T, U, A, _>",
+            deserialize_with = "serde_impls::deserialize::<T, U, A, _>"
+        )]
         return_type: A::Box,
         erased: bool,
     },
     Annotation {
         checked: bool,
+        #[serde(
+            serialize_with = "serde_impls::serialize::<T, U, A, _>",
+            deserialize_with = "serde_impls::deserialize::<T, U, A, _>"
+        )]
         expression: A::Box,
+        #[serde(
+            serialize_with = "serde_impls::serialize::<T, U, A, _>",
+            deserialize_with = "serde_impls::deserialize::<T, U, A, _>"
+        )]
         ty: A::Box,
     },
-    Wrap(A::Box),
+    Wrap(
+        #[serde(
+            serialize_with = "serde_impls::serialize::<T, U, A, _>",
+            deserialize_with = "serde_impls::deserialize::<T, U, A, _>"
+        )]
+        A::Box,
+    ),
 }
