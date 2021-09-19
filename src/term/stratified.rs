@@ -229,6 +229,51 @@ impl<T, V: Primitives<T>, A: Allocator<T, V>> Term<T, V, A> {
         self.is_recursive_in_helper(&mut vec![], definitions, alloc, b_alloc)
     }
 
+    pub fn is_sound(&self) -> Result<(), StratificationError<T>>
+    where
+        T: Clone,
+    {
+        use Term::*;
+
+        match &self {
+            Lambda { body, erased } => {
+                if *erased {
+                    if body.uses() > 0 {
+                        return Err(StratificationError::MultiplicityMismatch);
+                    }
+                }
+
+                body.is_sound()?;
+            }
+            Apply {
+                function,
+                argument,
+                erased,
+            } => {
+                function.is_sound()?;
+                if !*erased {
+                    argument.is_sound()?;
+                }
+            }
+            Put(term) => {
+                term.is_sound()?;
+            }
+            Duplicate { body, expression } => {
+                expression.is_sound()?;
+                body.is_sound()?;
+            }
+            Variable(_) | Reference(_) | Function { .. } | Universe => {}
+            Primitive(_) => todo!(),
+
+            Wrap(term) => term.is_sound()?,
+            Annotation { expression, .. } => {
+                expression.is_sound()?;
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn is_stratified(&self) -> Result<(), StratificationError<T>>
     where
         T: Clone,
