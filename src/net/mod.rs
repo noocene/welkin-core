@@ -6,8 +6,7 @@ use std::{fmt::Debug, hash::Hash};
 // pub mod from_ea_core;
 
 mod storage;
-pub use crate::convert::NetBuilderExt;
-pub use crate::convert::VisitNetExt;
+pub use crate::convert::{NetBuilderExt, NetError, VisitNetExt};
 pub(crate) use storage::Storage;
 
 #[cfg(feature = "graphviz")]
