@@ -11,14 +11,34 @@ pub mod untyped;
 use combine::{
     easy::{Error, Errors, Info},
     many, many1, parser,
-    parser::char::{alpha_num, digit, spaces},
+    parser::{
+        char::{alpha_num, digit, spaces},
+        combinator::no_partial,
+    },
     stream::PointerOffset,
     token as bare_token, value, EasyParser, Parser, Stream,
 };
 
-use super::Index;
+use super::{Index, Term};
 
-type Term = super::Term<String>;
+pub trait Referent<Input: Stream>: Clone {
+    fn as_str(&self) -> Option<&str>;
+    fn parse<'a>() -> Box<dyn Parser<Input, Output = Self, PartialState = ()> + 'a>
+    where
+        Input: 'a;
+}
+
+impl<Input: Stream<Token = char>> Referent<Input> for String {
+    fn as_str(&self) -> Option<&str> {
+        Some(&*self)
+    }
+    fn parse<'a>() -> Box<dyn Parser<Input, Output = Self, PartialState = ()> + 'a>
+    where
+        Input: 'a,
+    {
+        no_partial(name()).boxed()
+    }
+}
 
 fn name<Input>() -> impl Parser<Input, Output = String>
 where
@@ -41,7 +61,7 @@ where
     spaces().with(bare_token(token))
 }
 
-fn variable<Input>() -> impl Parser<Input, Output = Term>
+fn variable<Input, T: Referent<Input>>() -> impl Parser<Input, Output = Term<T>>
 where
     Input: Stream<Token = char>,
 {
@@ -51,8 +71,8 @@ where
 }
 
 parser! {
-    fn lambda[Input](erased: bool, ctx: Context)(Input) -> Term
-        where [Input: Stream<Token = char>]
+    fn lambda[Input, T](erased: bool, ctx: Context)(Input) -> Term<T>
+        where [Input: Stream<Token = char>, T: Referent<Input>]
     {
         let erased = *erased;
         name().then(|name| term(ctx.with(name)).map(Box::new)).map(move |body| Term::Lambda { erased, body })
@@ -60,8 +80,8 @@ parser! {
 }
 
 parser! {
-    fn apply[Input](erased: bool, ctx: Context)(Input) -> Term
-        where [Input: Stream<Token = char>]
+    fn apply[Input, T](erased: bool, ctx: Context)(Input) -> Term<T>
+        where [Input: Stream<Token = char>, T: Referent<Input>]
     {
         let erased = *erased;
         (term(ctx.clone()).map(Box::new), many1(term(ctx.clone()))).map(move |(function, arguments): (_, Vec<_>)| {
@@ -83,33 +103,42 @@ parser! {
     }
 }
 
-parser! {
-    fn reference[Input](ctx: Context)(Input) -> Term
-        where [Input: Stream<Token = char>]
-    {
-        name().map(move |name| ctx.resolve(&name).map(Term::Variable).unwrap_or(Term::Reference(name)))
-    }
+fn reference<'a, Input: 'a, T: Referent<Input> + 'a>(
+    ctx: Context,
+) -> impl Parser<Input, Output = Term<T>> + 'a
+where
+    Input: Stream<Token = char>,
+{
+    T::parse().map(move |name| {
+        if let Some(ident) = name.as_str() {
+            ctx.resolve(&ident)
+                .map(Term::Variable)
+                .unwrap_or(Term::Reference(name))
+        } else {
+            Term::Reference(name)
+        }
+    })
 }
 
 parser! {
-    fn _box[Input](ctx: Context)(Input) -> Term
-        where [Input: Stream<Token = char>]
+    fn _box[Input, T](ctx: Context)(Input) -> Term<T>
+        where [Input: Stream<Token = char>, T: Referent<Input>]
     {
         term(ctx.clone()).map(Box::new).map(Term::Put)
     }
 }
 
 parser! {
-    fn wrap[Input](ctx: Context)(Input) -> Term
-        where [Input: Stream<Token = char>]
+    fn wrap[Input, T](ctx: Context)(Input) -> Term<T>
+        where [Input: Stream<Token = char>, T: Referent<Input>]
     {
         term(ctx.clone()).map(Box::new).map(Term::Wrap)
     }
 }
 
 parser! {
-    fn duplicate[Input](ctx: Context)(Input) -> Term
-        where [Input: Stream<Token = char>]
+    fn duplicate[Input, T](ctx: Context)(Input) -> Term<T>
+        where [Input: Stream<Token = char>, T: Referent<Input>]
     {
         name().skip(token('=')).then(move |binding| {
             (
@@ -127,8 +156,8 @@ parser! {
 }
 
 parser! {
-    fn annotation[Input](ctx: Context)(Input) -> Term
-        where [Input: Stream<Token = char>]
+    fn annotation[Input, T](ctx: Context)(Input) -> Term<T>
+        where [Input: Stream<Token = char>, T: Referent<Input>]
     {
         (term(ctx.clone()).skip(token(':')).map(Box::new), term(ctx.clone()).map(Box::new)).map(|(expression, ty)| {
             Term::Annotation {
@@ -164,8 +193,8 @@ impl Context {
 }
 
 parser! {
-    fn function[Input](erased: bool, ctx: Context)(Input) -> Term
-        where [Input: Stream<Token = char>]
+    fn function[Input, T](erased: bool, ctx: Context)(Input) -> Term<T>
+        where [Input: Stream<Token = char>, T: Referent<Input>]
     {
         let erased = *erased;
 
@@ -191,7 +220,9 @@ parser! {
     }
 }
 
-pub fn term<Input>(ctx: Context) -> impl Parser<Input, Output = Term>
+pub fn term<'a, Input: 'a, T: Referent<Input> + 'a>(
+    ctx: Context,
+) -> impl Parser<Input, Output = Term<T>> + 'a
 where
     Input: Stream<Token = char>,
 {
@@ -211,7 +242,7 @@ where
     spaces().with(parser)
 }
 
-pub fn parse<Input>() -> impl Parser<Input, Output = Term>
+pub fn parse<'a, Input: 'a, T: Referent<Input> + 'a>() -> impl Parser<Input, Output = Term<T>> + 'a
 where
     Input: Stream<Token = char>,
 {
@@ -290,7 +321,10 @@ impl<T: Debug, R: Debug, P: ?Sized> From<Errors<T, R, PointerOffset<P>>> for Par
     }
 }
 
-impl FromStr for Term {
+impl<T> FromStr for Term<T>
+where
+    for<'a> T: Referent<combine::easy::Stream<&'a str>>,
+{
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {

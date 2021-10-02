@@ -1,18 +1,22 @@
 use combine::{many, EasyParser, Parser, Stream};
 use std::str::FromStr;
 
-type Term = crate::term::Term<String>;
+use crate::term::Term;
 
-use super::{name, term, token, Context, ParseError};
+use super::{name, term, token, Context, ParseError, Referent};
 
-fn definition<Input>(ctx: Context) -> impl Parser<Input, Output = (String, Term)>
+fn definition<'a, Input: 'a, T: Referent<Input> + 'a>(
+    ctx: Context,
+) -> impl Parser<Input, Output = (String, Term<T>)> + 'a
 where
     Input: Stream<Token = char>,
 {
     (name().skip(token('=')), term(ctx))
 }
 
-fn definitions<Input>(ctx: Context) -> impl Parser<Input, Output = Vec<(String, Term)>>
+fn definitions<'a, Input: 'a, T: Referent<Input> + 'a>(
+    ctx: Context,
+) -> impl Parser<Input, Output = Vec<(String, Term<T>)>> + 'a
 where
     Input: Stream<Token = char>,
 {
@@ -20,11 +24,14 @@ where
 }
 
 #[derive(Clone, Default)]
-pub struct Definitions {
-    pub terms: Vec<(String, Term)>,
+pub struct Definitions<T = String> {
+    pub terms: Vec<(String, Term<T>)>,
 }
 
-impl FromStr for Definitions {
+impl<T> FromStr for Definitions<T>
+where
+    for<'a> T: Referent<combine::easy::Stream<&'a str>>,
+{
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {

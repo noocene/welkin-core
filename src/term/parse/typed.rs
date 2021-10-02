@@ -1,11 +1,13 @@
 use combine::{many, EasyParser, Parser, Stream};
 use std::str::FromStr;
 
-type Term = crate::term::Term<String>;
+use crate::term::Term;
 
-use super::{name, term, token, untyped, Context, ParseError};
+use super::{name, term, token, untyped, Context, ParseError, Referent};
 
-fn definition<Input>(ctx: Context) -> impl Parser<Input, Output = (String, (Term, Term))>
+fn definition<'a, Input: 'a, T: Referent<Input> + 'a>(
+    ctx: Context,
+) -> impl Parser<Input, Output = (String, (Term<T>, Term<T>))> + 'a
 where
     Input: Stream<Token = char>,
 {
@@ -17,7 +19,9 @@ where
         .map(|(a, b, c)| (a, (b, c)))
 }
 
-fn definitions<Input>(ctx: Context) -> impl Parser<Input, Output = Vec<(String, (Term, Term))>>
+fn definitions<'a, Input: 'a, T: Referent<Input> + 'a>(
+    ctx: Context,
+) -> impl Parser<Input, Output = Vec<(String, (Term<T>, Term<T>))>> + 'a
 where
     Input: Stream<Token = char>,
 {
@@ -25,12 +29,15 @@ where
 }
 
 #[derive(Clone, Default)]
-pub struct Definitions {
-    pub terms: Vec<(String, (Term, Term))>,
+pub struct Definitions<T = String> {
+    pub terms: Vec<(String, (Term<T>, Term<T>))>,
 }
 
-impl Definitions {
-    pub fn untyped(&self) -> untyped::Definitions {
+impl<T> Definitions<T> {
+    pub fn untyped(&self) -> untyped::Definitions<T>
+    where
+        T: Clone,
+    {
         untyped::Definitions {
             terms: self
                 .terms
@@ -42,7 +49,10 @@ impl Definitions {
     }
 }
 
-impl FromStr for Definitions {
+impl<T> FromStr for Definitions<T>
+where
+    for<'a> T: Referent<combine::easy::Stream<&'a str>>,
+{
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
