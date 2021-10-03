@@ -3,20 +3,20 @@ use std::str::FromStr;
 
 use crate::term::Term;
 
-use super::{name, term, token, Context, ParseError, Referent};
+use super::{term, token, Context, ParseError, Referent};
 
 fn definition<'a, Input: 'a, T: Referent<Input> + 'a>(
     ctx: Context,
-) -> impl Parser<Input, Output = (String, Term<T>)> + 'a
+) -> impl Parser<Input, Output = (T, Term<T>)> + 'a
 where
     Input: Stream<Token = char>,
 {
-    (name().skip(token('=')), term(ctx))
+    (T::parse().skip(token('=')), term(ctx))
 }
 
 fn definitions<'a, Input: 'a, T: Referent<Input> + 'a>(
     ctx: Context,
-) -> impl Parser<Input, Output = Vec<(String, Term<T>)>> + 'a
+) -> impl Parser<Input, Output = Vec<(T, Term<T>)>> + 'a
 where
     Input: Stream<Token = char>,
 {
@@ -25,7 +25,7 @@ where
 
 #[derive(Clone, Default)]
 pub struct Definitions<T = String> {
-    pub terms: Vec<(String, Term<T>)>,
+    pub terms: Vec<(T, Term<T>)>,
 }
 
 impl<T> FromStr for Definitions<T>
