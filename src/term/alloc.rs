@@ -44,8 +44,8 @@ impl Zero for System {
     }
 }
 
-impl<T, U: Primitives<T>> IntoInner<Term<T, U>> for Box<Term<T, U>> {
-    fn into_inner(self) -> Term<T, U> {
+impl<T, U: Primitives<T>, A: Allocator<T, U>> IntoInner<Term<T, U, A>> for Box<Term<T, U, A>> {
+    fn into_inner(self) -> Term<T, U, A> {
         *self
     }
 }
